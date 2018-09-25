@@ -4,6 +4,102 @@
 
 
 
+Function getNextSweep() //return next sweep to be associated with photostim
+	controlinfo/W=ITC18USB_Dev_0 setvar_sweep
+	variable nextsweep=v_value
+	return nextsweep
+end
+
+Function isDAQhappening() //return 0 if acquisition is not taking place
+	NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+	return runmode
+end
+
+
+Function startDAQ()
+	variable runmode=isDAQhappening()
+	if (runmode==0)
+		PGC_SetAndActivateControl("ITC18USB_Dev_0","DataAcquireButton")
+		return 1
+	else
+		print "DAQ already running, sweep not started"
+		return 0
+	endif
+end
+
+
+
+Function mapping_prep() //get ready for mapping experiment
+		
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //no indexing
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=0) //no distribution
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_Settings_InsertTP", val=0) //no test pulse
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0) //turn off ttl outputs to LED's
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
+	variable i
+	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
+	variable stim_set_num = whichListItem("mappingShort_DA_0", all_dacs)+1 //+1 to comp for 'none'
+	variable count_headstages=0
+	for (i=0;i<=3;i+=1) //for each headstage
+		string CB_name = "Check_DA_0"+num2str(i)
+		controlinfo/W=ITC18USB_Dev_0 $CB_name
+		variable DA_check = V_Value
+		if (DA_check == 1) //if it's in use, update the protocol
+			string first_da_drop = "Wave_DA_0"+num2str(i)
+			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			count_headstages+=1
+		endif
+	endfor
+	
+	if (count_headstages==1) //set sampling rate to avoid filling memory
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+	elseif(count_headstages==4)
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+	else
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+	endif
+	
+	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=1)
+	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
+	make_stim_monitor()
+end
+
+
+Function makeStimPointWave(stim_id, start, reps, interval) //make a wave containing each sweep # associated with a StimPoint
+	string stim_id
+	variable start, reps, interval
+	DFREF saveDFR = GetDataFolderDFR()		// Save
+	SetDataFolder root:opto_df
+	string PS_wave_name="PhotoStimulation_"+stim_id
+	Make/o/n=(reps) $PS_wave_name
+	wave PS_wave=$PS_wave_name
+	PS_wave=start+x*interval
+	SetDataFolder saveDFR
+	
+end
+
+
+Function appendStimPointWave(stim_id,start,reps,interval)
+	string stim_id
+	variable start, reps, interval
+	variable i
+	DFREF saveDFR = GetDataFolderDFR()		// Save
+	SetDataFolder root:opto_df
+	string PS_wave_name="PhotoStimulation_"+stim_id
+	wave PS_wave=$PS_wave_name
+	variable size=DimSize(PS_wave,0)
+	Redimension/N=(size+reps) PS_wave
+	for(i=0;i<reps;i+=1)
+		PS_wave[size+i]=start+i*interval
+	endfor
+	SetDataFolder saveDFR
+	
+end
+
+
+
+
+
 
 //////EXPERIMENT CONTROL GUI AND FUNCTIONS HERE///////
 Function Exp_con_gui()
