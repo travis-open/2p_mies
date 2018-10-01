@@ -131,7 +131,7 @@ Function Go()
 	PGC_setandActivateControl(panelTitle, "Title_AsyncAD_07", str="temperature")
 	PGC_setandActivateControl(panelTitle, "Gain_AsyncAD_07", val=0.1)
 	PGC_setandActivateControl(panelTitle, "Check_AsyncAD_07", val=1)
-	NWB_LoadAllStimsets(fileName="C:Travis MIES:stimsets_0228.nwb") //TH add
+	NWB_LoadAllStimsets(fileName="C:Travis MIES:stimsets_1001.nwb") //TH add
 	
 	//NWB_LoadAllStimsets(fileName="C:Travis MIES:old Igor pxps:1P_stim_wPWM_2.nwb")
 	Exp_con_gui() //TH add

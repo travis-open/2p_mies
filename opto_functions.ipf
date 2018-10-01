@@ -27,10 +27,30 @@ Function startDAQ()
 	endif
 end
 
+Function startAndStore(photoStimID)
+	variable photoStimID
+	wave sweep_track_wv=root:opto_df:sweep_tracking
+	
+	variable row_count=DimSize(sweep_track_wv,0)
+	
+	variable sweep_num=getNextSweep()
+	string dim_name="sweep_"+num2str(sweep_num)
+	variable dimLabel=FindDimLabel(sweep_track_wv,0,dim_name)
+	if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
+		InsertPoints/M=0 0, 1, sweep_track_wv
+		SetDimLabel 0, 0, $dim_name, sweep_track_wv
+		sweep_track_wv[0][%sweep]=sweep_num
+		sweep_track_wv[0][%photoStim_ID]=photoStimID
+	else
+		sweep_track_wv[dimLabel][%sweep]=sweep_num
+		sweep_track_wv[dimLabel][%photoStim_ID]=photoStimID
+	endif
+	startDAQ()
 
+end
 
-Function mapping_prep() //get ready for mapping experiment
-		
+Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experiment
+	variable duration, stimPoints, reps	
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //no indexing
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=0) //no distribution
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_Settings_InsertTP", val=0) //no test pulse
@@ -38,7 +58,16 @@ Function mapping_prep() //get ready for mapping experiment
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
 	variable i
 	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
-	variable stim_set_num = whichListItem("mappingShort_DA_0", all_dacs)+1 //+1 to comp for 'none'
+	variable stim_set_num
+	if (duration<=1)
+		stim_set_num = whichListItem("mapping_1s_DA_0", all_dacs)+1 //+1 to comp for 'none'
+	elseif (duration<=2)
+		stim_set_num = whichListItem("mapping_2s_DA_0", all_dacs)+1
+	elseif (duration<=5)
+		stim_set_num = whichListItem("mapping_5s_DA_0", all_dacs)+1
+	else
+		stim_set_num = whichListItem("mapping_10s_DA_0", all_dacs)+1 
+	endif
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
 		string CB_name = "Check_DA_0"+num2str(i)
@@ -63,6 +92,8 @@ Function mapping_prep() //get ready for mapping experiment
 	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
 	make_stim_monitor()
 end
+
+
 
 
 Function makeStimPointWave(stim_id, start, reps, interval) //make a wave containing each sweep # associated with a StimPoint
@@ -97,7 +128,29 @@ Function appendStimPointWave(stim_id,start,reps,interval)
 end
 
 
+Function my_function(paneltitle, s)
+	string paneltitle
+	STRUCT AnalysisFunction_V3 &s
+	
+	switch(s.eventType)
+		case PRE_DAQ_EVENT:
+			print "this pre-daq!"
+			
+		case PRE_SET_EVENT:
+			print "now it's pre-set-event?"
 
+			break
+		case POST_SWEEP_EVENT:
+			print "sweep is over"
+
+			break
+		case POST_SET_EVENT:
+			print "set is over"
+			break
+	endswitch
+	
+	//print "I am a function"
+end
 
 
 
@@ -479,8 +532,24 @@ Function make_opto_folder()
 		make/o/n=0 root:opto_df:reps
 		make/o/t/n=0 root:opto_df:cnxs
 		make/o/t/n=0 root:opto_df:supps
+		make_sweep_tracking_wave()
+		
 	endif
 end
+
+Function make_sweep_tracking_wave()
+	DFREF saveDFR = GetDataFolderDFR()		// Save
+	SetDataFolder root:opto_df
+	make/o/N=(1,5)/D sweep_tracking
+		SetDimLabel 1, 0, sweep, sweep_tracking
+		SetDimLabel 1, 1, photoStim_ID, sweep_tracking
+		SetDimLabel 1, 2, pockel_start, sweep_tracking
+		SetDimLabel 1, 3, baseline, sweep_tracking
+		SetDimLabel 1, 4, end_Vm, sweep_tracking
+		SetDimLabel 0, 0, sweep_0, sweep_tracking
+	SetDataFolder saveDFR
+end
+
 
 Function write_map_settings(first_sweep, cells, num_reps, checkAppend)
 	variable first_sweep, cells, num_reps, checkAppend
