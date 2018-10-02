@@ -27,8 +27,8 @@ Function startDAQ()
 	endif
 end
 
-Function startAndStore(photoStimID)
-	variable photoStimID
+Function run_mapping_sweep(stimPoint_ID, stim_num)
+	variable stimPoint_ID, stim_num
 	wave sweep_track_wv=root:opto_df:sweep_tracking
 	
 	variable row_count=DimSize(sweep_track_wv,0)
@@ -40,10 +40,12 @@ Function startAndStore(photoStimID)
 		InsertPoints/M=0 0, 1, sweep_track_wv
 		SetDimLabel 0, 0, $dim_name, sweep_track_wv
 		sweep_track_wv[0][%sweep]=sweep_num
-		sweep_track_wv[0][%photoStim_ID]=photoStimID
+		sweep_track_wv[0][%stimPoint_ID]=stimPoint_ID
+		sweep_track_wv[0][%stim_num]=stim_num
 	else
 		sweep_track_wv[dimLabel][%sweep]=sweep_num
-		sweep_track_wv[dimLabel][%photoStim_ID]=photoStimID
+		sweep_track_wv[dimLabel][%stimPoint_ID]=stimPoint_ID
+		sweep_track_wv[dimLabel][%stim_num]=stim_num
 	endif
 	startDAQ()
 
@@ -87,7 +89,7 @@ Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experi
 	else
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 	endif
-	
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=1)
 	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=1)
 	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
 	make_stim_monitor()
@@ -542,10 +544,11 @@ Function make_sweep_tracking_wave()
 	SetDataFolder root:opto_df
 	make/o/N=(1,5)/D sweep_tracking
 		SetDimLabel 1, 0, sweep, sweep_tracking
-		SetDimLabel 1, 1, photoStim_ID, sweep_tracking
+		SetDimLabel 1, 1, stimPoint_ID, sweep_tracking
 		SetDimLabel 1, 2, pockel_start, sweep_tracking
 		SetDimLabel 1, 3, baseline, sweep_tracking
 		SetDimLabel 1, 4, end_Vm, sweep_tracking
+		SetDimLabel 1, 5, stim_num, sweep_tracking
 		SetDimLabel 0, 0, sweep_0, sweep_tracking
 	SetDataFolder saveDFR
 end
@@ -766,7 +769,7 @@ Function stim_gui()
 	//Button button3 title="multi-plot", proc=ButtonProc_multiplot, size={70,20}, help={"not that useful"}
 	//Button button5 title="start auto", proc=ButtonProc_startupdate, size={70,20}, help={"cycles through MP targets every 2 s, make sure to turn off"}
 	//Button button6 title="stop auto", proc=ButtonProc_stopupdate, size={70,20}, help={"stop cycling"}
-	//PopupMenu popupHS, title="headstage", value="all;0;1;2;3"
+	PopupMenu popupHS, title="headstage", value="all;0;1;2;3", proc=single_hs_click
 	PopupMenu popupT_starts, title="Load T series", value=t_series_list(), proc=populate_t_series_values
  
 end
@@ -802,7 +805,13 @@ Function populate_t_series_values(PU_Struct) : PopupMenuControl
 	return 0
 end
 
+Function single_hs_click(PU_Struct) : PopupMenuControl
+	STRUCT WMPopupAction &PU_Struct
+	controlinfo/W=stim_monitor_ops popupHS
+	single_hs(v_value-2)
+	return 0
 
+end
 
 Function Checkbox_proc(CB_Struct) : CheckBoxControl
 	STRUCT WMCheckboxAction &CB_Struct
@@ -1410,7 +1419,7 @@ Function map_plot(first_sweep, interval, reps, xoffset_check, yoffset_check, x_s
 	axes=listmatch(axes,"L*")
 	variable numaxes=itemsinlist(axes,";")
 	Make/o/n=(numaxes) axeslimits
-	axeslimits=1-0.8*x/(numaxes-1)
+	axeslimits=1-0.9*x/(numaxes-1)
 	if (scale==0)
 		Setaxis bottom x_start, x_end
 	endif
@@ -1425,7 +1434,7 @@ Function map_plot(first_sweep, interval, reps, xoffset_check, yoffset_check, x_s
 		SetAxis/A=2 $axis_name
 	endfor
 	ModifyGraph freePos(L_AD6)=0
-	ModifyGraph axisEnab(L_AD6)={0,0.19}
+	ModifyGraph axisEnab(L_AD6)={0,0.09}
 	Label L_AD6 "L_AD6"
 	ModifyGraph lblPos(L_AD6)=50
 	ModifyGraph rgb=(0,0,0)
@@ -1853,10 +1862,11 @@ Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MP
 
 			if (W_config[j][1]==6) //if this is pockel output
 				 
-				FindLevel/q temp_wave 0.05
+				FindLevel/q/p temp_wave 0.05
+				
 				if (V_flag==0)
 				
-					variable x_offset_value=V_LevelX*-1
+					variable x_offset_value=floor(V_LevelX)*deltax(temp_wave)*-1
 					
 					for (trace=total_traces-1; trace>=total_traces-trace_count; trace-=1)
 						wave theWave=WaveRefIndexed("",trace,1)
@@ -1880,7 +1890,7 @@ Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MP
 	axes=listmatch(axes,"L*")
 	variable numaxes=itemsinlist(axes,";")
 	Make/o/n=(numaxes) axeslimits
-	axeslimits=1-0.8*x/(numaxes-1)
+	axeslimits=1-0.9*x/(numaxes-1)
 
 	for (i=0;i<(numaxes-1);i+=1)
 		axis_name=stringfromlist(i,axes)
@@ -1903,7 +1913,7 @@ Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MP
 		ErrorBars $average_name SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=(error_wave,error_wave)
 	endfor
 	ModifyGraph freePos(L_AD6)=0
-	ModifyGraph axisEnab(L_AD6)={0,0.19}
+	ModifyGraph axisEnab(L_AD6)={0,0.09}
 	Label L_AD6 "L_AD6"
 	ModifyGraph lblPos(L_AD6)=50
 	if (scale==0)
@@ -1911,6 +1921,39 @@ Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MP
 	endif
 End
 
+Function single_hs(headstage)
+	variable headstage
+	string axes=axislist("")
+	axes=listmatch(axes,"L*")
+	variable numaxes=itemsinlist(axes,";")
+	variable i
+	
+	
+	if (headstage<0)
+		
+		Make/o/n=(numaxes) axeslimits
+		axeslimits=1-0.9*x/(numaxes-1)
+		for (i=0;i<(numaxes-1);i+=1)
+			string axis_name=stringfromlist(i,axes)
+			variable axisbottom = axeslimits[i+1]+.01
+			variable axistop = axeslimits[i]-.01
+			ModifyGraph axisEnab($axis_name)={axisbottom,axistop}
+		endfor
+	else
+		string hs_axis_name="L_AD"+num2str(headstage)
+		ModifyGraph axisEnab($hs_axis_name)={0.1,1}
+
+		for (i=0;i<(numaxes-1);i+=1)
+			axis_name=stringfromlist(i,axes)
+			if (CmpStr(hs_axis_name, axis_name)!=0)
+			
+				ModifyGraph axisEnab($axis_name)={0,0.0001}
+			endif
+			
+		endfor
+		
+	endif
+End
 
 
 Function Opto_ReturnNextSweep()
