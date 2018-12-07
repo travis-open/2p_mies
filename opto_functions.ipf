@@ -27,27 +27,38 @@ Function startDAQ()
 	endif
 end
 
+Function run_mapping_sweep_short(stimpoint_id, stim_num)
+	variable stimPoint_ID, stim_num
+	startDAQ()
+end
+
+
 Function run_mapping_sweep(stimPoint_ID, stim_num)
 	variable stimPoint_ID, stim_num
-	wave sweep_track_wv=root:opto_df:sweep_tracking
+	wave mapInfo_wv=root:opto_df:mapInfo
+	wave sP_ID_wv=root:opto_df:photoStim_ID
+	wave stim_num_wv=root:opto_df:stim_num
+	variable LastSweep = AFH_GetLastSweepAcquired("ITC18USB_Dev_0")
 	
-	variable row_count=DimSize(sweep_track_wv,0)
 	
-	variable sweep_num=getNextSweep()
-	string dim_name="sweep_"+num2str(sweep_num)
-	variable dimLabel=FindDimLabel(sweep_track_wv,0,dim_name)
-	if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
-		InsertPoints/M=0 0, 1, sweep_track_wv
-		SetDimLabel 0, 0, $dim_name, sweep_track_wv
-		sweep_track_wv[0][%sweep]=sweep_num
-		sweep_track_wv[0][%stimPoint_ID]=stimPoint_ID
-		sweep_track_wv[0][%stim_num]=stim_num
-	else
-		sweep_track_wv[dimLabel][%sweep]=sweep_num
-		sweep_track_wv[dimLabel][%stimPoint_ID]=stimPoint_ID
-		sweep_track_wv[dimLabel][%stim_num]=stim_num
-	endif
+	controlinfo/W=ITC18USB_Dev_0 setvar_sweep
+	
+	variable sweep_num=v_value
 	startDAQ()
+	string dim_name="sweep_"+num2str(sweep_num)
+	variable dimLabel=FindDimLabel(mapInfo_wv,0,dim_name)
+	if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
+		InsertPoints/M=0 0, 1, mapInfo_wv
+		SetDimLabel 0, 0, $dim_name, mapInfo_wv
+		dimLabel=0
+	endif
+	
+	mapInfo_wv[dimLabel][0]=sweep_num
+	mapInfo_wv[dimLabel][1]=stimPoint_ID
+	mapInfo_wv[dimLabel][2]=stim_num
+	sp_ID_wv[8]=stimPoint_ID
+	stim_num_wv[8]=stim_num
+	pockel_times_for_sweep(LastSweep)
 
 end
 
@@ -58,6 +69,10 @@ Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experi
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_Settings_InsertTP", val=0) //no test pulse
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0) //turn off ttl outputs to LED's
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
+	string all_TTLs=ReturnListofAllStimSets(CHANNEL_TYPE_TTL,"*TTL*")
+	variable TTL_num=whichListItem("mappingShort_TTL_0", all_TTLs)+1 // +1 due to 'none'
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Wave_TTL_00", val=TTL_num) //select 'connmapping_ttl' as stim.
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=1)
 	variable i
 	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
 	variable stim_set_num
@@ -70,6 +85,7 @@ Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experi
 	else
 		stim_set_num = whichListItem("mapping_10s_DA_0", all_dacs)+1 
 	endif
+	stim_set_num = whichListItem("mapping_500ms_DA_0", all_dacs)+1 //monkey patch until acq4 updated with 500 ms option,
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
 		string CB_name = "Check_DA_0"+num2str(i)
@@ -92,7 +108,11 @@ Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experi
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=1)
 	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=1)
 	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
-	make_stim_monitor()
+	controlinfo/W=ITC18USB_Dev_0 setvar_sweep
+	variable nextsweep=v_value
+	print "mapping started at sweep "+num2str(nextsweep)+". "+num2str(stimPoints)+" stim IDs for "+num2str(reps)+". Over at sweep "+num2str(nextsweep+stimPoints*reps)+"."
+	write_map_settings(nextsweep, stimPoints, reps, 0)
+	make_photoStim_graph()
 end
 
 
@@ -534,22 +554,25 @@ Function make_opto_folder()
 		make/o/n=0 root:opto_df:reps
 		make/o/t/n=0 root:opto_df:cnxs
 		make/o/t/n=0 root:opto_df:supps
-		make_sweep_tracking_wave()
-		
+		make_mapInfo_wave()
+		make/o/n=9 root:opto_df:photoStim_ID ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN} //make wave to store photoStim_ID and pass on to labnotebook
+		make/o/n=9 root:opto_df:stim_num ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
+		make/o/n=4 root:opto_df:HS_selection={1,1,1,1,0,0,1} //make wave to store user-selected headstages to display
 	endif
 end
 
-Function make_sweep_tracking_wave()
+Function make_mapInfo_wave()
 	DFREF saveDFR = GetDataFolderDFR()		// Save
 	SetDataFolder root:opto_df
-	make/o/N=(1,5)/D sweep_tracking
-		SetDimLabel 1, 0, sweep, sweep_tracking
-		SetDimLabel 1, 1, stimPoint_ID, sweep_tracking
-		SetDimLabel 1, 2, pockel_start, sweep_tracking
-		SetDimLabel 1, 3, baseline, sweep_tracking
-		SetDimLabel 1, 4, end_Vm, sweep_tracking
-		SetDimLabel 1, 5, stim_num, sweep_tracking
-		SetDimLabel 0, 0, sweep_0, sweep_tracking
+	make/o/N=(1,6)/D mapInfo
+		SetDimLabel 1, 0, sweep, mapInfo
+		SetDimLabel 1, 1, stimPoint_ID, mapInfo
+		SetDimLabel 1, 2, stim_num, mapInfo
+		SetDimLabel 1, 3, pockel_start, mapInfo
+		SetDimLabel 1, 4, pockel_power, mapInfo
+		SetDimLabel 1, 5, sweep_length, mapInfo
+		SetDimLabel 0, 0, sweep_0, mapInfo
+	mapInfo=NaN
 	SetDataFolder saveDFR
 end
 
@@ -1150,7 +1173,7 @@ Function distribute_sweeps()
 
     variable total_traces=itemsinlist(sweeplist,";")
 
-    string axes=axislist("stim_monitor")
+    string axes=axislist("")
 
     axes=listmatch(axes,"L*")
 
@@ -1178,7 +1201,7 @@ Function distribute_sweeps()
 
             sweepname=stringfromlist(i,sweeplist)
 
-            wave w_trace=tracenametowaveref("stim_monitor",sweepname)
+            wave w_trace=tracenametowaveref("",sweepname)
 
             info=traceinfo("",sweepname,0)
 
@@ -1484,18 +1507,20 @@ end
 
 
 Function highlighter()
-	ModifyGraph/W=stim_monitor lsize=1, rgb=(43690,43690,43690)
-	string axes=axislist("stim_monitor")
+	ModifyGraph/W=photostim_graph lsize=1, rgb=(43690,43690,43690)
+	string axes=axislist("photostim_graph")
 	axes=listmatch(axes,"L*")
 	variable numaxes=itemsinlist(axes,";")
 	string sweeplist=tracenamelist("",";",1)
-	variable count=1
-	do
-		string sweepname=stringfromlist(0,sweeplist)
-		ModifyGraph/W=stim_monitor lsize($sweepname)=1.2,rgb($sweepname)=(65535,21845,0)
+	variable axis
+	variable sweep
+	variable count = 0
+	Do
+		string sweepname=stringfromlist(count,sweeplist)
+		ModifyGraph/W=photostim_graph lsize($sweepname)=1.2,rgb($sweepname)=(65535,21845,0)
 		ReorderTraces _front_, {$sweepname}
 		count+=1
-	while (count<=numaxes)
+	while (count<numaxes)
 end
 
 
@@ -1960,7 +1985,73 @@ Function Opto_ReturnNextSweep()
 
 	controlinfo/W=ITC18USB_Dev_0 setvar_sweep
 	variable sw = v_value
-	print "here I am"
+	//print "here I am"
 	return sw
 	
 End
+
+
+Function check_pockel_times()
+	variable min_buffer = 200
+	//variable max_start = 1500
+	wave mapInfo = root:opto_df:mapInfo
+	variable row_count=DimSize(mapInfo,0)
+	Make/o/n=(row_count) pockel_starts, time_remaining
+	pockel_starts=mapInfo[p][3]
+	time_remaining=mapInfo[p][5] //set wave to sweep length (temp)
+	time_remaining=time_remaining-pockel_starts //subtract pockel onset to get remaining record
+	variable i
+	variable count = 0
+	for (i=0;i<row_count;i+=1)
+		if (pockel_starts[i]<min_buffer || time_remaining[i]<min_buffer)
+			string bad_sweep=GetDimLabel(mapInfo,0,i)
+			print bad_sweep+" had an out of range pockel onset"
+			count +=1
+		endif
+	endfor
+	print num2str(count)+" sweeps failed pockel QC"
+end
+
+Function pockel_times_for_sweep(sweep)
+	variable sweep
+	wave mapInfo_wv=root:opto_df:mapInfo
+
+	setdatafolder root:MIES:ITCDevices:ITC18USB:Device0:Data:
+	string config_name="Config_Sweep_"+num2str(sweep)
+	string sweep_name="Sweep_"+num2str(sweep)
+	wave W_config=$config_name
+	wave W_sweep=$sweep_name
+	variable col_num=AFH_GetITCDataColumn(W_config, 6, 0) //data column corresponding to AD_6, where we record PC output
+	
+	if (numtype(col_num)==2)
+		print "no pockel"
+		Abort
+		
+	endif
+	Duplicate/o/r=[][col_num] W_sweep, tempAD6
+	FindLevel/q tempAD6 0.05
+	if (V_flag == 1)
+    	print "No Pockel cell output detected when one was expected on "+sweep_name
+    	variable time_crossing=NaN
+    	variable power=NaN
+    			
+    else
+    	time_crossing=V_LevelX
+    	//wavestats/q/r=(time_crossing+1,time_crossing+2) tempAD6
+    	power=mean(tempAD6,time_crossing+1,time_crossing+2)
+    	power=round(power*52.7)
+		
+    endif
+    variable sweepEnd=rightx(tempAd6)
+    variable dimLabel=FindDimLabel(mapInfo_wv,0,sweep_name)
+	if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
+		InsertPoints/M=0 0, 1, mapInfo_wv
+		SetDimLabel 0, 0, $sweep_name, mapInfo_wv
+		dimLabel=0
+	endif	
+	mapInfo_wv[dimLabel][0]=sweep
+	mapInfo_wv[dimLabel][3]=time_crossing
+	mapInfo_wv[dimLabel][4]=power
+	mapInfo_wv[dimLabel][5]=sweepEnd
+
+end
