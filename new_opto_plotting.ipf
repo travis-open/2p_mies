@@ -16,7 +16,7 @@ Function photostim_gui()
 	Button buttonPrev title="<", proc=PS_ButtonProc_plot_prev, size={35,20}, help={"plot previous"}
 	Button buttonNext title=">",proc=PS_ButtonProc_plot_next, size={35,20}, help={"plot next"}
 	Button buttonUpdate title="update", proc=PS_ButtonProc_update, help={"update plot"}
-	PopupMenu popup_recent, title="   ", help={"cycle through all or only recent cells"}, value="all;recent"
+	PopupMenu popup_recent, title=" ", help={"display all data or only most recent round"}, value="all;recent"
 	Checkbox checkAverage, title="average", value=0, help={"plot the average and S.D., other options may be ignored"}, proc=avg_CB_proc
 	Checkbox checkYoffset, title="offset Y", value=1, help={"crude baseline offset"}, proc=PS_Yoffset_proc
 	Checkbox checkScale, title="full scale?", value=0, help={"display entire wave, ignore settings below"}, proc=fullscale_checkbox_proc
@@ -54,6 +54,9 @@ end
 Function HS_CB_proc(CB_Struct) : CheckBoxControl
 	STRUCT WMCheckboxAction &CB_Struct
 	getHStoDisplay()
+	controlinfo/W=photostim_ops popup_PSID
+   variable PSID=str2num(s_value)
+   plot_stimID(PSID)
 	return 0
 End
 
@@ -101,7 +104,9 @@ Function PS_ButtonProc_QC(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up : PopupMenuControl
-	
+		wave mapinfo=root:opto_df:mapinfo
+		variable last_sweep=mapInfo[0][0]
+		pockel_times_for_sweep(7)
 		check_pockel_times()
 		break
 		case -1: // control being killed
@@ -224,7 +229,9 @@ Function PS_ButtonProc_plot_prev(ba) : ButtonControl
         			FindValue/V=(PSID) uniqueIDs
         			variable new_setting=v_value-1
         			PopupMenu popup_PSID win=photostim_ops, mode=new_setting
-            
+            		wave round_wv=root:opto_df:round_count
+            		variable round_num=round_wv[0]
+            		plot_stimID(PSID, round_num=round_num)
             
             	else	
             		controlinfo/W=photostim_ops popup_PSID
@@ -240,9 +247,9 @@ Function PS_ButtonProc_plot_prev(ba) : ButtonControl
             			PopupMenu popup_PSID win=photostim_ops, mode=V_max
             			PSID=uniqueIDs[V_maxloc]
             		endif
-            		
+            		plot_stimID(PSID)
             	endif
-            	plot_stimID(PSID)
+            	
             break
         case -1: // control being killed
             break
@@ -259,7 +266,16 @@ Function PS_ButtonProc_update(ba) : ButtonControl
         case 2: // mouse up
         	controlinfo/W=photostim_ops popup_PSID
         	variable PSID=str2num(s_value)
-        	plot_stimID(PSID)
+        	controlinfo/W=photostim_ops popup_recent
+        	variable recent=V_value
+        	if(recent==2)
+        		wave round_wv=root:opto_df:round_count
+            	variable round_num=round_wv[0]
+            	plot_stimID(PSID, round_num=round_num)
+          else
+        	
+        		plot_stimID(PSID)
+        	endif
         	break
        case -1: //control being killed
        	break
@@ -296,7 +312,9 @@ Function PS_ButtonProc_plot_next(ba) : ButtonControl
         			FindValue/V=(PSID) uniqueIDs
         			variable new_setting=v_value+1
         			PopupMenu popup_PSID win=photostim_ops, mode=new_setting
-        			
+        			wave round_wv=root:opto_df:round_count
+            		variable round_num=round_wv[0]
+            		plot_stimID(PSID, round_num=round_num)
         		else	
             		controlinfo/W=photostim_ops popup_PSID
             		variable param0=v_value
@@ -309,9 +327,9 @@ Function PS_ButtonProc_plot_next(ba) : ButtonControl
             			PopupMenu popup_PSID win=photostim_ops, mode=1
             			PSID=uniqueIDs[0]
             		endif
-            		
+            		plot_stimID(PSID)
             	endif
-            	plot_stimID(PSID)
+            	
             		
             break
         case -1: // control being killed
@@ -366,7 +384,7 @@ Function getUniqueStimIDs()
 end
 
 
-Function getRecentStimPoints()
+Function getRecentStimPoints_old()
 	DFREF saveDFR = GetDataFolderDFR()
 	setdatafolder root:opto_df:
 	wave mapInfo
@@ -378,8 +396,29 @@ Function getRecentStimPoints()
 	variable repeat_i=v_value
 	Duplicate/o/r=[0,repeat_i-1] stimIds recent_ids
 	Sort recent_ids recent_ids
-		
+	SetDataFolder saveDFR	
 end
+
+
+Function getRecentStimPoints()
+	DFREF saveDFR = GetDataFolderDFR()
+	setdatafolder root:opto_df:
+	wave mapInfo
+	variable length=dimsize(mapInfo,0)
+	make/o/n=(length) round_wave, stimIDs
+	round_wave=mapInfo[p][6]
+	stimIDs=mapInfo[p][1]
+	variable last_round=wavemax(round_wave)
+	Duplicate/o stimIDs recent_ids, temp
+	temp=(round_wave[p]==last_round) ? stimIDs[p] : NaN
+	WaveTransform zapNaNs, temp
+	
+	FindDuplicates/RN=recent_ids temp
+	Sort recent_ids recent_ids
+
+	SetDataFolder saveDFR
+end
+	
 
 Function plot_ID_drop(PU_Struct) : PopupMenuControl
 	STRUCT WMPopupAction &PU_Struct
@@ -462,6 +501,29 @@ Function find_id_power(id, power)
 	
 end
 
+Function find_id_round(id, round_num)
+	variable id, round_num
+	DFREF saveDFR = GetDataFolderDFR()
+	setdatafolder root:opto_df:
+	wave mother_wv=root:opto_df:mapInfo
+	variable length=dimsize(mother_wv,0)
+	Make/o/n=(length) stimIDs, rounds
+	stimIDs=mother_wv[p][1]
+	rounds=mother_wv[p][6]
+	duplicate/o stimIDs indexes
+	indexes=(stimIDs[p]==id && rounds[p]==round_num) ? p : NaN
+	WaveTransform zapNaNs, indexes
+	duplicate/o indexes sweeps
+	variable i
+	for (i=0;i<numpnts(indexes);i+=1)
+		sweeps[i]=mother_wv[indexes[i]][0]
+	endfor
+	
+	
+	
+	SetDataFolder saveDFR
+end
+
 Function clear_graph() //remove all sweeps from graph
 	string sweeplist=tracenamelist("",";",1)
 	variable i
@@ -483,13 +545,15 @@ Function clean_optoDF()
 	SetDataFolder saveDFR
 end
 
-Function plot_stimID(stimID,[power])
-	variable stimID, power
+Function plot_stimID(stimID,[power,round_num])
+	variable stimID, power, round_num
 	DFREF saveDFR = GetDataFolderDFR()
 	clear_graph()
 	clean_optoDF()
-	if (ParamIsDefault(power)==1)
+	if (ParamIsDefault(power)==1 && ParamIsDefault(round_num)==1)
 		find_id(stimID)
+	elseif (ParamIsDefault(round_num)==0)
+		find_id_round(stimID, round_num)
 	else
 		find_id_power(stimID, power)
 	endif

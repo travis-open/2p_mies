@@ -105,7 +105,7 @@ Function Go()
 	
 		PGC_setAndActivateControl(panelTitle, "SetVar_DataAcq_AutoBiasV",val=-70)
 		PGC_setAndActivateControl(panelTitle, "SetVar_DataAcq_AutoBiasVrange",val=1)
-		PGC_setAndActivateControl(panelTitle, "setvar_DataAcq_IbiasMax",val=200)
+		PGC_setAndActivateControl(panelTitle, "setvar_DataAcq_IbiasMax",val=800)
 		PGC_setAndActivateControl(panelTitle, "check_DataAcq_AutoBias",val=0)
 	endfor
 	PGC_setAndActivateControl(panelTitle, "slider_DataAcq_ActiveHeadstage",val=0)
@@ -118,6 +118,9 @@ Function Go()
 	//HD_LoadAdditionalStimSet()  //TH comment out
 	//ChangeTab(panelTitle, "ADC", 0)
 	PGC_setAndActivateControl(panelTitle, "Check_DataAcqHS_00",val=1)
+	PGC_setAndActivateControl(panelTitle, "Check_DataAcqHS_01",val=1)
+	PGC_setAndActivateControl(panelTitle, "Check_DataAcqHS_02",val=1)
+	PGC_setAndActivateControl(panelTitle, "Check_DataAcqHS_03",val=1)
 	PGC_setAndActivateControl(panelTitle, "StartTestPulseButton")
 	
 	PGC_setandActivateControl(panelTitle, "Check_settings_TPAfterDAQ", val=1)
@@ -131,7 +134,7 @@ Function Go()
 	PGC_setandActivateControl(panelTitle, "Title_AsyncAD_07", str="temperature")
 	PGC_setandActivateControl(panelTitle, "Gain_AsyncAD_07", val=0.1)
 	PGC_setandActivateControl(panelTitle, "Check_AsyncAD_07", val=1)
-	NWB_LoadAllStimsets(fileName="C:Travis MIES:stimsets_1001.nwb") //TH add
+	NWB_LoadAllStimsets(fileName="C:Travis MIES:stimsets_1109.nwb") //TH add
 	
 	//NWB_LoadAllStimsets(fileName="C:Travis MIES:old Igor pxps:1P_stim_wPWM_2.nwb")
 	Exp_con_gui() //TH add
@@ -139,7 +142,7 @@ Function Go()
 	print "Done!"
 	print "Set up Prairie Save folder and confirm appropriate objective setting and galvo calibration!"
 	print "   ...or else"
-	print "Run script and set Zseries to 'test'"
+	print "Let's bake a cake!"
 End
 
 

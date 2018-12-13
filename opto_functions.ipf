@@ -38,12 +38,15 @@ Function run_mapping_sweep(stimPoint_ID, stim_num)
 	wave mapInfo_wv=root:opto_df:mapInfo
 	wave sP_ID_wv=root:opto_df:photoStim_ID
 	wave stim_num_wv=root:opto_df:stim_num
+	wave round_count=root:opto_df:round_count
+	variable round_num=round_count[0]
 	variable LastSweep = AFH_GetLastSweepAcquired("ITC18USB_Dev_0")
 	
 	
 	controlinfo/W=ITC18USB_Dev_0 setvar_sweep
 	
 	variable sweep_num=v_value
+	
 	startDAQ()
 	string dim_name="sweep_"+num2str(sweep_num)
 	variable dimLabel=FindDimLabel(mapInfo_wv,0,dim_name)
@@ -56,6 +59,7 @@ Function run_mapping_sweep(stimPoint_ID, stim_num)
 	mapInfo_wv[dimLabel][0]=sweep_num
 	mapInfo_wv[dimLabel][1]=stimPoint_ID
 	mapInfo_wv[dimLabel][2]=stim_num
+	mapInfo_wv[dimLabel][6]=round_num
 	sp_ID_wv[8]=stimPoint_ID
 	stim_num_wv[8]=stim_num
 	pockel_times_for_sweep(LastSweep)
@@ -63,7 +67,9 @@ Function run_mapping_sweep(stimPoint_ID, stim_num)
 end
 
 Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experiment
-	variable duration, stimPoints, reps	
+	variable duration, stimPoints, reps
+	wave round_count=root:opto_df:round_count
+	round_count+=1	
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //no indexing
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=0) //no distribution
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_Settings_InsertTP", val=0) //no test pulse
@@ -76,8 +82,10 @@ Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experi
 	variable i
 	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
 	variable stim_set_num
-	if (duration<=1)
-		stim_set_num = whichListItem("mapping_1s_DA_0", all_dacs)+1 //+1 to comp for 'none'
+	if (duration<=0.5)
+		stim_set_num = whichListItem("mapping_500ms_DA_0", all_dacs)+1 //+1 to comp for 'none'
+	elseif (duration<=1)
+		stim_set_num = whichListItem("mapping_1s_DA_0", all_dacs)+1 
 	elseif (duration<=2)
 		stim_set_num = whichListItem("mapping_2s_DA_0", all_dacs)+1
 	elseif (duration<=5)
@@ -85,7 +93,7 @@ Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experi
 	else
 		stim_set_num = whichListItem("mapping_10s_DA_0", all_dacs)+1 
 	endif
-	stim_set_num = whichListItem("mapping_500ms_DA_0", all_dacs)+1 //monkey patch until acq4 updated with 500 ms option,
+	 
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
 		string CB_name = "Check_DA_0"+num2str(i)
@@ -179,17 +187,19 @@ end
 //////EXPERIMENT CONTROL GUI AND FUNCTIONS HERE///////
 Function Exp_con_gui()
 	if (wintype("experiment_control") == 0)
-		newpanel/W=(1750,50,1950,510)/n=experiment_control
+		newpanel/W=(1750,50,1950,700)/n=experiment_control
 		Button button_intrinsic, pos={10,10}, fsize = 20, title = "Intrinsic", proc=ButtonProc_Intrinsic, size={100,100}
-		Button button_mapping, pos={10,120}, fsize = 20, title = "Mapping", proc=ButtonProc_Mapping, size={100,100}
-		Button button_1P, pos={10, 230}, fsize = 20, title = "1P", proc=ButtonProc_1P, size={100,100}
-		Button button_save, pos={10,400}, fsize=14, title = "save & export", proc=ButtonProc_save, size={100,50}
-		Button button_TPcheck, pos={10,340}, fsize=14, title="TP check", proc=ButtonProc_testP, size={100,50}
-		SetVariable setvarInterval, pos={150,125}, title="# cells", bodyWidth=45, value= _NUM:10
-		SetVariable setvarReps, pos={150,155}, title="# reps", bodyWidth=45, value= _NUM:10, limits={1,1000,5}
-		Button button_Append, title="append", fsize=14, pos={120, 180}, size={75, 35}, proc=ButtonProc_Append
-		Checkbox checkTTL1, title="LED 1", value=0, pos={120, 260}
-		Checkbox checkTTL2, title="LED 2", value=1, pos={120, 280}
+		Button button_extra, pos={120,10}, title="more steps", fsize=14, size={75,35}, proc=ButtonProc_bigsteps
+		Button button_multi, title="multi check", fsize=14, size={100,100}, pos={10,120}, proc=ButtonProc_multi
+		Button button_mapping, pos={10,230}, fsize = 20, title = "Mapping", proc=ButtonProc_Mapping, size={100,100}
+		Button button_1P, pos={10, 340}, fsize = 20, title = "1P", proc=ButtonProc_1P, size={100,100}
+		Button button_save, pos={10,510}, fsize=14, title = "save & export", proc=ButtonProc_save, size={100,50}
+		Button button_TPcheck, pos={10,450}, fsize=14, title="TP check", proc=ButtonProc_testP, size={100,50}
+		SetVariable setvarInterval, pos={150,235}, title="# cells", bodyWidth=45, value= _NUM:10
+		SetVariable setvarReps, pos={150,265}, title="# reps", bodyWidth=45, value= _NUM:10, limits={1,1000,5}
+		Button button_Append, title="append", fsize=14, pos={120, 290}, size={75, 35}, proc=ButtonProc_Append
+		Checkbox checkTTL1, title="LED 1", value=0, pos={120, 380}
+		Checkbox checkTTL2, title="LED 2", value=1, pos={120, 400}
 	endif
 	
 	
@@ -223,12 +233,56 @@ Function ButtonProc_Intrinsic(ba) : ButtonControl
     switch( ba.eventCode )
         case 2: // mouse up
         	NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
-        	print runmode
+        	
         	if (runmode!=0)
         		print "Data is being acquired. I'm not doing anything for your own good."
         		break
         	else
 				intrinsic()
+				break
+			endif
+	case -1: // control being killed
+            break
+    endswitch
+
+    return 0
+End	
+
+
+Function ButtonProc_bigsteps(ba) : ButtonControl
+    STRUCT WMButtonAction &ba
+
+    switch( ba.eventCode )
+        case 2: // mouse up
+        	NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+        	
+        	if (runmode!=0)
+        		print "Data is being acquired. I'm not doing anything for your own good."
+        		break
+        	else
+				bigsteps()
+				break
+			endif
+	case -1: // control being killed
+            break
+    endswitch
+
+    return 0
+End	
+
+
+Function ButtonProc_multi(ba) : ButtonControl
+    STRUCT WMButtonAction &ba
+
+    switch( ba.eventCode )
+        case 2: // mouse up
+        	NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+        	
+        	if (runmode!=0)
+        		print "Data is being acquired. I'm not doing anything for your own good."
+        		break
+        	else
+				paircheck()
 				break
 			endif
 	case -1: // control being killed
@@ -344,6 +398,81 @@ Function ButtonProc_testP(ba) : ButtonControl
 
     return 0
 End	
+
+Function pairCheck()
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //indexing to run multiple stim
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=1) //distribute 
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Get_Set_ITI", val=0) //don;t use ITI's from protocols
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_ITI", val=10)
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=0) //turn off the lights
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0)
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=10)
+	variable i
+	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
+	variable stim_set_num = whichListItem("pulsetrain_50hz_DA_0", all_dacs)+1 //+1 to comp for 'none'
+	variable count_headstages=0
+	for (i=0;i<=3;i+=1) //for each headstage
+		string CB_name = "Check_DA_0"+num2str(i)
+		controlinfo/W=ITC18USB_Dev_0 $CB_name
+		variable DA_check = V_Value
+		if (DA_check == 1) //if it's in use, update the protocol
+			string first_da_drop = "Wave_DA_0"+num2str(i)
+			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			count_headstages+=1
+		endif
+	endfor
+	
+	if (count_headstages==1) //set sampling rate to avoid filling memory
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+	elseif(count_headstages==4)
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+	else
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+		
+	endif
+	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=0)
+	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
+
+end	
+
+Function bigsteps()
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //indexing to run multiple stim
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=1) //distribute in case there are synapses
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Get_Set_ITI", val=1) //use ITI's from protocols
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=0) //turn off the lights
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0)
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=1)
+	
+	variable i
+	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
+	variable stim_set_num = whichListItem("big_steps_DA_0", all_dacs)+1 //+1 to comp for 'none'
+	variable count_headstages=0
+	for (i=0;i<=3;i+=1) //for each headstage
+		string CB_name = "Check_DA_0"+num2str(i)
+		controlinfo/W=ITC18USB_Dev_0 $CB_name
+		variable DA_check = V_Value
+		if (DA_check == 1) //if it's in use, update the protocol
+			string first_da_drop = "Wave_DA_0"+num2str(i)
+			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			count_headstages+=1
+		endif
+	endfor
+	
+	if (count_headstages==1) //set sampling rate to avoid filling memory
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+	elseif(count_headstages==4)
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+	else
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+		
+	endif
+	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=0)
+	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
+	
+end
+
 
 
 Function intrinsic()
@@ -558,19 +687,23 @@ Function make_opto_folder()
 		make/o/n=9 root:opto_df:photoStim_ID ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN} //make wave to store photoStim_ID and pass on to labnotebook
 		make/o/n=9 root:opto_df:stim_num ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
 		make/o/n=4 root:opto_df:HS_selection={1,1,1,1,0,0,1} //make wave to store user-selected headstages to display
+		make/o/n=1 root:opto_df:round_count
+		wave round_count=root:opto_df:round_count
+		round_count=0
 	endif
 end
 
 Function make_mapInfo_wave()
 	DFREF saveDFR = GetDataFolderDFR()		// Save
 	SetDataFolder root:opto_df
-	make/o/N=(1,6)/D mapInfo
+	make/o/N=(1,7)/D mapInfo
 		SetDimLabel 1, 0, sweep, mapInfo
 		SetDimLabel 1, 1, stimPoint_ID, mapInfo
 		SetDimLabel 1, 2, stim_num, mapInfo
 		SetDimLabel 1, 3, pockel_start, mapInfo
 		SetDimLabel 1, 4, pockel_power, mapInfo
 		SetDimLabel 1, 5, sweep_length, mapInfo
+		SetDimLabel 1, 6, round_ID, mapinfo
 		SetDimLabel 0, 0, sweep_0, mapInfo
 	mapInfo=NaN
 	SetDataFolder saveDFR
@@ -2025,33 +2158,34 @@ Function pockel_times_for_sweep(sweep)
 	
 	if (numtype(col_num)==2)
 		print "no pockel"
-		Abort
 		
-	endif
-	Duplicate/o/r=[][col_num] W_sweep, tempAD6
-	FindLevel/q tempAD6 0.05
-	if (V_flag == 1)
-    	print "No Pockel cell output detected when one was expected on "+sweep_name
-    	variable time_crossing=NaN
-    	variable power=NaN
+		
+	else
+		Duplicate/o/r=[][col_num] W_sweep, tempAD6
+		FindLevel/q tempAD6 0.05
+		if (V_flag == 1)
+    		print "No Pockel cell output detected when one was expected on "+sweep_name
+    		variable time_crossing=NaN
+    		variable power=NaN
     			
-    else
-    	time_crossing=V_LevelX
-    	//wavestats/q/r=(time_crossing+1,time_crossing+2) tempAD6
-    	power=mean(tempAD6,time_crossing+1,time_crossing+2)
-    	power=round(power*52.7)
+    	else
+    		time_crossing=V_LevelX
+    		//wavestats/q/r=(time_crossing+1,time_crossing+2) tempAD6
+    		power=mean(tempAD6,time_crossing+1,time_crossing+2)
+    		power=round(power*52.7)
 		
-    endif
-    variable sweepEnd=rightx(tempAd6)
-    variable dimLabel=FindDimLabel(mapInfo_wv,0,sweep_name)
-	if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
-		InsertPoints/M=0 0, 1, mapInfo_wv
-		SetDimLabel 0, 0, $sweep_name, mapInfo_wv
-		dimLabel=0
-	endif	
-	mapInfo_wv[dimLabel][0]=sweep
-	mapInfo_wv[dimLabel][3]=time_crossing
-	mapInfo_wv[dimLabel][4]=power
-	mapInfo_wv[dimLabel][5]=sweepEnd
+    	endif
+    	variable sweepEnd=rightx(tempAd6)
+    	variable dimLabel=FindDimLabel(mapInfo_wv,0,sweep_name)
+		if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
+			InsertPoints/M=0 0, 1, mapInfo_wv
+			SetDimLabel 0, 0, $sweep_name, mapInfo_wv
+			dimLabel=0
+		endif	
+		mapInfo_wv[dimLabel][0]=sweep
+		mapInfo_wv[dimLabel][3]=time_crossing
+		mapInfo_wv[dimLabel][4]=power
+		mapInfo_wv[dimLabel][5]=sweepEnd
+	endif
 
 end
