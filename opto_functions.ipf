@@ -63,6 +63,7 @@ Function run_mapping_sweep(stimPoint_ID, stim_num)
 	sp_ID_wv[8]=stimPoint_ID
 	stim_num_wv[8]=stim_num
 	pockel_times_for_sweep(LastSweep)
+	//check_baseline_for_sweep(lastsweep,-70)
 
 end
 
@@ -696,7 +697,7 @@ end
 Function make_mapInfo_wave()
 	DFREF saveDFR = GetDataFolderDFR()		// Save
 	SetDataFolder root:opto_df
-	make/o/N=(1,7)/D mapInfo
+	make/o/N=(1,11)/D mapInfo
 		SetDimLabel 1, 0, sweep, mapInfo
 		SetDimLabel 1, 1, stimPoint_ID, mapInfo
 		SetDimLabel 1, 2, stim_num, mapInfo
@@ -704,6 +705,10 @@ Function make_mapInfo_wave()
 		SetDimLabel 1, 4, pockel_power, mapInfo
 		SetDimLabel 1, 5, sweep_length, mapInfo
 		SetDimLabel 1, 6, round_ID, mapinfo
+		SetDimLabel 1, 7, AD0_qc, mapinfo
+		SetDimLabel 1, 8, AD1_qc, mapinfo
+		SetDimLabel 1, 9, AD2_qc, mapinfo
+		SetDimLabel 1, 10, AD3_qc, mapinfo
 		SetDimLabel 0, 0, sweep_0, mapInfo
 	mapInfo=NaN
 	SetDataFolder saveDFR

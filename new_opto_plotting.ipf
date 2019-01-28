@@ -734,3 +734,105 @@ Function offset_PSgraph()
 		offset_y(-50,0)
 	endif
 end
+
+
+
+
+Function makeTempSweep(variable sweepnumber)
+	
+	string sweep_name="sweep_"+num2str(sweepnumber)
+	string config_name="Config_Sweep_"+num2str(sweepnumber)
+	wave mapinfo=root:opto_df:mapinfo
+	wave HS_check=root:opto_df:HS_selection
+	variable index=finddimlabel(mapinfo,0,sweep_name)
+	setdatafolder root:MIES:ITCDevices:ITC18USB:Device0:Data:
+	
+		
+		
+	//string sweep_name="Sweep_"+num2str(sweepnumber)
+	variable pockel_start=mapinfo[index][3]
+
+	pockel_start*=-1
+	
+	wave W_config=$config_name
+	wave W_sweep=$sweep_name
+	variable j
+	for (j=0;j<dimsize(W_config,0);j+=1) //for each channel...
+		if(pockel_start>0)
+				
+			
+		
+			if (W_config[j][0] == 0) //if this is an AD_trace...
+				variable HS_num=W_config[j][1]
+					if(HS_check[HS_num]==1)
+					
+					string temp_name=sweep_name+"_AD"+num2str(HS_num)
+				
+					Duplicate/o/r=[][j] W_sweep root:opto_df:$temp_name
+					wave temp_wave=root:opto_df:$temp_name
+					SetScale/P x pockel_start, deltax(temp_wave), temp_wave
+					//string axis_name="L_AD"+num2str(HS_num)
+					//appendtograph/L=$axis_name root:opto_df:$temp_name //append it to the correct axis				
+					
+					endif
+			endif
+		endif
+		endfor //end of channel loop
+		
+	
+end
+
+
+Function check_baseline_for_sweep(sweep,target_v)
+	variable sweep, target_v
+	variable tolerance = 5
+	DFREF saveDFR = GetDataFolderDFR()
+	wave mapInfo_wv=root:opto_df:mapInfo
+	
+	setdatafolder root:MIES:ITCDevices:ITC18USB:Device0:Data:
+	string config_name="Config_Sweep_"+num2str(sweep)
+	string sweep_name="Sweep_"+num2str(sweep)
+	variable dimLabel=FindDimLabel(mapInfo_wv,0,sweep_name)
+	if(dimLabel==-2)
+		print "sweep "+num2str(sweep)+" not found during baseline check"
+	endif
+	wave W_config=$config_name
+	wave W_sweep=$sweep_name
+	variable j
+	for (j=0;j<dimsize(W_config,0);j+=1)
+		if (W_config[j][0] == 0) //if this is an AD_trace...
+			variable HS_num=W_config[j][1]
+			string dimlabel_name="AD"+num2str(HS_num)+"_qc"
+			variable HS_dimLabel=FindDimLabel(mapInfo_wv,1,dimlabel_name)
+			if (HS_num<=3)
+				string temp_name=sweep_name+"_AD"+num2str(HS_num)
+				
+				Duplicate/o/r=[][j] W_sweep root:opto_df:$temp_name
+				wave temp_wave=root:opto_df:$temp_name
+				
+				wavestats/q/r=[0,100] temp_wave
+				variable startV=V_avg
+				if (abs(startV-target_v)>tolerance)
+					print sweep_name+", heastage "+num2str(HS_num)
+					print "    starting V = "+num2str(startV)
+					mapinfo_wv[dimlabel][HS_dimlabel]+=1
+				endif
+				variable lastp=numpnts(temp_wave)
+				wavestats/q/r=[lastp-100, lastp] temp_wave
+				variable endV=V_avg
+				if(abs(endV-startv)>3)
+					print sweep_name+", heastage "+num2str(HS_num)
+					print "    big change"
+					mapinfo_wv[dimlabel][HS_dimlabel]+=1
+				endif
+			endif
+				
+			
+	
+	
+		endif
+	endfor
+	SetDataFolder saveDFR
+end
+	
+	
