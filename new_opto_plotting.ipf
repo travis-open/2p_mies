@@ -16,24 +16,74 @@ Function photostim_gui()
 	Button buttonPrev title="<", proc=PS_ButtonProc_plot_prev, size={35,20}, help={"plot previous"}
 	Button buttonNext title=">",proc=PS_ButtonProc_plot_next, size={35,20}, help={"plot next"}
 	Button buttonUpdate title="update", proc=PS_ButtonProc_update, help={"update plot"}
-	PopupMenu popup_recent, title=" ", help={"display all data or only most recent round"}, value="all;recent"
+	PopupMenu popup_recent, title=" ", help={"display all data or only most recent round"}, value=round_list()
 	Checkbox checkAverage, title="average", value=0, help={"plot the average and S.D., other options may be ignored"}, proc=avg_CB_proc
 	Checkbox checkYoffset, title="offset Y", value=1, help={"crude baseline offset"}, proc=PS_Yoffset_proc
 	Checkbox checkScale, title="full scale?", value=0, help={"display entire wave, ignore settings below"}, proc=fullscale_checkbox_proc
 	Checkbox checkDistOn, title="distribute", value=0, help={"keep distribute on"},  proc=PS_CheckDist_proc
 	Checkbox checkColorOn, title="color", value=0, help={"keep color on"},  proc=color_CB_proc
+	Checkbox checkQC, title="QC", value=1, help={"only display sweeps meeting QC"}
+	Button buttonFail title="FAIL", proc=ButtonProc_fail, help={"manually fail sweep under cursor A for QC"}
 	SetVariable setvarXmin title="X min", bodyWidth=45, value= _NUM:-50, limits={-10000,10000,10}, proc=SV_setxscale
 	SetVariable setvarXmax title="X max", bodyWidth=45, value= _NUM:150, limits={-10000,10000,10}, proc=SV_setxscale
 	Button button2 title="highlighter", proc=ButtonProc_highlighter, size={70,20}, help={"highlight single trace, cycles through"}
 	PopupMenu popup_power title="powers", value=power_list(), proc=plot_power_drop, help={"select power(s) to display"}
-	Button buttonQC title="QC", proc=PS_ButtonProc_QC, size={35,20}, help={"check photostim timing"}
+	
 	Checkbox HS_all, title="all", value=1, help={"display all headstages with data"}, proc=HS_CB_proc
 	Checkbox HS_0, title="HS 0", value=0, help={"toggle headstage display"}, proc=HS_CB_proc
 	Checkbox HS_1, title="HS 1", value=0, help={"toggle headstage display"}, proc=HS_CB_proc
 	Checkbox HS_2, title="HS 2", value=0, help={"toggle headstage display"}, proc=HS_CB_proc
 	Checkbox HS_3, title="HS 3", value=0, help={"toggle headstage display"}, proc=HS_CB_proc
+	GroupBox cnxbox, size={90,300}, title="connection", frame=0
+	Button excitatory, title="excitatory", pos={5,520}, size={70,20}, proc=ButtonProc_excitatory
+	Button inhibitory, title="inhibitory", pos={5,545}, size={70,20}
+	Button refine_bl, title="fine offset", pos={5,570}, size={70,20}, proc=ButtonProc_fine_offset
+	SetVariable refine_bl_start, title="", bodyWidth=45, value= _NUM:0
+	SetVariable refine_bl_end, title="", bodyWidth=45, value=_NUM:10
 	
 end
+
+
+Function ButtonProc_excitatory(ba) : ButtonControl
+    STRUCT WMButtonAction &ba
+
+    switch( ba.eventCode )
+        case 2: // mouse up
+			call_cnx("excitatory")
+        	break
+       case -1: //control being killed
+       	break
+       endswitch
+       
+       return 0
+ end
+
+
+
+
+
+
+Function ButtonProc_fine_offset(ba) : ButtonControl
+    STRUCT WMButtonAction &ba
+
+    switch( ba.eventCode )
+        case 2: // mouse up
+        	controlinfo/W=photostim_ops refine_bl_start
+        	variable startbl=v_value
+        	
+        	controlinfo/W=photostim_ops refine_bl_end
+        	variable endbl=v_value 
+        	
+        	offset_y(startbl,endbl)
+        	remove_avg()
+        	photostim_avg()
+        	break
+       case -1: //control being killed
+       	break
+       endswitch
+       
+       return 0
+ end
 
 Function getHStoDisplay()
 	controlinfo/W=photostim_ops HS_all
@@ -87,35 +137,21 @@ Function plot_power_drop(PU_Struct) : PopupMenuControl
 	variable PSID=uniquePSID[PSID_index]
 	controlinfo/W=photostim_ops popup_power
 	variable power_index=v_value-2
+	controlinfo/W=photostim_ops checkQC
+	variable QC=v_value
 	if (power_index>=0)
 		wave unique_powers=root:opto_df:unique_powers
 		variable power=unique_powers[power_index]
-		plot_stimID(PSID, power=power)
+		plot_stimID(PSID, power=power, applyQC=QC)
 		
 	else 
-		plot_stimID(PSID)
+		plot_stimID(PSID, applyQC=QC)
 		
 	endif
 	return 0
 end
 	
-Function PS_ButtonProc_QC(ba) : ButtonControl
-    STRUCT WMButtonAction &ba
 
-    switch( ba.eventCode )
-        case 2: // mouse up : PopupMenuControl
-		wave mapinfo=root:opto_df:mapinfo
-		variable last_sweep=mapInfo[0][0]
-		pockel_times_for_sweep(7)
-		check_pockel_times()
-		break
-		case -1: // control being killed
-            break
-    endswitch
-
-		
-	return 0
-end
 	
 	
 end
@@ -165,7 +201,9 @@ Function PS_Yoffset_proc(CB_Struct) : CheckBoxControl
 		controlinfo/W=photostim_ops popup_PSID
 		variable param0=v_value
 		variable PSID=uniqueIDs[param0-1]
-       plot_stimID(PSID)
+		controlinfo/W=photostim_ops checkQC
+		variable QC=v_value
+       plot_stimID(PSID, applyQC=QC)
    endif
 	
 	return 0
@@ -211,7 +249,8 @@ Function PS_ButtonProc_plot_prev(ba) : ButtonControl
         		getuniquestimids()
             controlinfo/W=photostim_ops popup_recent
         		variable recent=V_value
-        		
+        		controlinfo/W=photostim_ops checkQC
+				variable QC=v_value
         		wave uniqueIDs=root:opto_df:uniqueStimIDs
         		if(recent==2)
         			controlinfo/W=photostim_ops popup_PSID
@@ -231,23 +270,23 @@ Function PS_ButtonProc_plot_prev(ba) : ButtonControl
         			PopupMenu popup_PSID win=photostim_ops, mode=new_setting
             		wave round_wv=root:opto_df:round_count
             		variable round_num=round_wv[0]
-            		plot_stimID(PSID, round_num=round_num)
+            		plot_stimID(PSID, round_num=round_num, applyQC=QC)
             
             	else	
             		controlinfo/W=photostim_ops popup_PSID
             		variable param0=v_value
             		variable new_param=param0-1
-            		print new_param
+            		//print new_param
             		if(new_param>0)
             			PopupMenu popup_PSID win=photostim_ops, mode=new_param
             		
             			PSID=uniqueIDs[new_param-1]
             		else
-            			wavestats/q uniqueIDs
+            			wavestats/q/M=1 uniqueIDs
             			PopupMenu popup_PSID win=photostim_ops, mode=V_max
             			PSID=uniqueIDs[V_maxloc]
             		endif
-            		plot_stimID(PSID)
+            		plot_stimID(PSID, applyQC=QC)
             	endif
             	
             break
@@ -268,13 +307,18 @@ Function PS_ButtonProc_update(ba) : ButtonControl
         	variable PSID=str2num(s_value)
         	controlinfo/W=photostim_ops popup_recent
         	variable recent=V_value
+        	string roundString=S_value
+        	controlinfo/W=photostim_ops checkQC
+			variable QC=v_value
         	if(recent==2)
         		wave round_wv=root:opto_df:round_count
             	variable round_num=round_wv[0]
-            	plot_stimID(PSID, round_num=round_num)
-          else
-        	
-        		plot_stimID(PSID)
+            	plot_stimID(PSID, round_num=round_num, applyQC=QC)
+          elseif(recent>2)
+          	round_num=str2num(roundString)
+          	plot_stimID(PSID, round_num=round_num, applyQC=QC)
+        	else
+        		plot_stimID(PSID, applyQC=QC)
         	endif
         	break
        case -1: //control being killed
@@ -294,7 +338,8 @@ Function PS_ButtonProc_plot_next(ba) : ButtonControl
         		getuniquestimids()
         		controlinfo/W=photostim_ops popup_recent
         		variable recent=V_value
-        		
+        		controlinfo/W=photostim_ops checkQC
+				variable QC=v_value
         		wave uniqueIDs=root:opto_df:uniqueStimIDs
         		if(recent==2)
         			controlinfo/W=photostim_ops popup_PSID
@@ -314,7 +359,7 @@ Function PS_ButtonProc_plot_next(ba) : ButtonControl
         			PopupMenu popup_PSID win=photostim_ops, mode=new_setting
         			wave round_wv=root:opto_df:round_count
             		variable round_num=round_wv[0]
-            		plot_stimID(PSID, round_num=round_num)
+            		plot_stimID(PSID, round_num=round_num, applyQC=QC)
         		else	
             		controlinfo/W=photostim_ops popup_PSID
             		variable param0=v_value
@@ -327,7 +372,7 @@ Function PS_ButtonProc_plot_next(ba) : ButtonControl
             			PopupMenu popup_PSID win=photostim_ops, mode=1
             			PSID=uniqueIDs[0]
             		endif
-            		plot_stimID(PSID)
+            		plot_stimID(PSID, applyQC=QC)
             	endif
             	
             		
@@ -338,6 +383,25 @@ Function PS_ButtonProc_plot_next(ba) : ButtonControl
 
     return 0
 End
+
+
+Function ButtonProc_fail(ba) : ButtonControl
+    STRUCT WMButtonAction &ba
+
+    switch( ba.eventCode )
+        case 2: // mouse up
+        	fail_selected_sweep()
+        	PS_ButtonProc_update(ba)
+        	break
+       case -1: //control being killed
+       	break
+       endswitch
+       
+       return 0
+ end
+
+
+
 
 Function/S PSID_List()
 	DFREF saveDFR = GetDataFolderDFR()
@@ -365,6 +429,35 @@ Function/S PSID_List()
 	
 	SetDataFolder saveDFR
 end
+
+
+Function/S round_list()
+	DFREF saveDFR = GetDataFolderDFR()
+	setdatafolder root:opto_df:
+	wave mapInfo
+	variable length=dimsize(mapInfo,0)
+	make/o/n=(length) rounds
+	rounds=mapInfo[p][6]
+	if(length>1)
+		FindDuplicates/RN=uniqueRounds rounds
+		Sort uniqueRounds uniqueRounds
+		WaveTransform zapNaNs, uniqueRounds
+	else 
+		Duplicate/o Rounds uniqueRounds
+	endif
+	variable i
+	string list="all;recent;"
+	for (i=0; i<numpnts(uniqueRounds); i+=1)
+		if (uniqueRounds[i]!=0)
+			list=list+num2str(uniqueRounds[i])+";"
+		endif
+	endfor
+	return list
+	
+	
+	SetDataFolder saveDFR
+end	
+
 
 Function getUniqueStimIDs()
 	DFREF saveDFR = GetDataFolderDFR()
@@ -419,6 +512,9 @@ Function getRecentStimPoints()
 	SetDataFolder saveDFR
 end
 	
+	
+	
+
 
 Function plot_ID_drop(PU_Struct) : PopupMenuControl
 	STRUCT WMPopupAction &PU_Struct
@@ -426,7 +522,9 @@ Function plot_ID_drop(PU_Struct) : PopupMenuControl
 	variable PSID_index=v_value-1
 	wave uniquePSID=root:opto_df:uniqueStimIDs
 	variable PSID=uniquePSID[PSID_index]
-	plot_stimID(PSID)
+	controlinfo/W=photostim_ops checkQC
+	variable QC=v_value
+	plot_stimID(PSID, applyQC=QC)
 	return 0
 end
 
@@ -501,6 +599,22 @@ Function find_id_power(id, power)
 	
 end
 
+
+Function getPassedSweeps(stim)
+	variable stim
+	wave mapinfo
+	variable length=dimsize(mapInfo,0)
+	make/o/n=(length) stimIDs, HS0QC
+	stimIDs=mapinfo[p][1]
+	hs0qc=mapinfo[p][7]
+	duplicate/o stimIds temp
+	temp=(stimIDs[p]==stim && HS0QC[p]==0) ? p : NaN
+	wavestats/q/M=1 temp
+	print num2str(V_npnts)+" passed QC"
+end
+
+
+
 Function find_id_round(id, round_num)
 	variable id, round_num
 	DFREF saveDFR = GetDataFolderDFR()
@@ -545,8 +659,8 @@ Function clean_optoDF()
 	SetDataFolder saveDFR
 end
 
-Function plot_stimID(stimID,[power,round_num])
-	variable stimID, power, round_num
+Function plot_stimID(stimID,[power,round_num,applyQC])
+	variable stimID, power, round_num,applyQC
 	DFREF saveDFR = GetDataFolderDFR()
 	clear_graph()
 	clean_optoDF()
@@ -578,7 +692,7 @@ Function plot_stimID(stimID,[power,round_num])
 		string config_name="Config_Sweep_"+num2str(sweepnumber)
 		string sweep_name="Sweep_"+num2str(sweepnumber)
 		variable pockel_start=tracking[index][3]
-
+		
 		pockel_start*=-1
 		//print pockel_start
 		wave W_config=$config_name
@@ -591,16 +705,30 @@ Function plot_stimID(stimID,[power,round_num])
 			endif
 			if (W_config[j][0] == 0) //if this is an AD_trace...
 				variable HS_num=W_config[j][1]
-				if(HS_check[HS_num]==1)
+				if(HS_check[HS_num]==1) //if we want to display this trace
+					if(HS_num==6)
+						variable QC_state=0
+					else
+						QC_state=tracking[index][HS_num+7] //kludgey until something better
+					endif
+					if(applyQC==0 || QC_state==0) //if either QC is turned off, or this sweep/HS has not failed, plot it
 					
-					string temp_name=sweep_name+"_AD"+num2str(HS_num)
+						string temp_name=sweep_name+"_AD"+num2str(HS_num)
 				
-					Duplicate/o/r=[][j] W_sweep root:opto_df:$temp_name
-					wave temp_wave=root:opto_df:$temp_name
-					SetScale/P x pockel_start, deltax(temp_wave), temp_wave
-					string axis_name="L_AD"+num2str(HS_num)
-					appendtograph/L=$axis_name root:opto_df:$temp_name //append it to the correct axis				
-					trace_count+=1
+						Duplicate/o/r=[][j] W_sweep root:opto_df:$temp_name
+						wave temp_wave=root:opto_df:$temp_name
+						variable dt=deltax(temp_wave)
+						SetScale/P x pockel_start, dt, temp_wave
+						if(dt<0.04)
+							smooth 32, temp_wave
+						else	
+							smooth 20, temp_wave
+						endif
+						string axis_name="L_AD"+num2str(HS_num)
+					
+						appendtograph/L=$axis_name root:opto_df:$temp_name //append it to the correct axis				
+						trace_count+=1
+					endif
 				endif
 			endif
 		endfor //end of channel loop
@@ -620,6 +748,7 @@ Function prettygraph()
 	string axis_name
 	string axes=axislist("")
 	axes=listmatch(axes,"L*")
+	axes=sortlist(axes)
 	variable numaxes=itemsinlist(axes,";")
 	Make/o/n=(numaxes) axeslimits
 	axeslimits=1-0.9*x/(numaxes-1)
@@ -645,6 +774,7 @@ Function prettygraph()
 	ModifyGraph fSize=8
 	ModifyGraph axThick=1.2
 	ModifyGraph nticks=3
+	ModifyGraph grid(bottom)=1,gridStyle(bottom)=2,gridHair(bottom)=0
 	SetDataFolder saveDFR
 end
 
@@ -687,6 +817,7 @@ Function average_each_axis()
 			wave error_wave=$error_name
 			appendtograph/l=$axis_name average_wave		
 			ErrorBars $average_name SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=(error_wave,error_wave)
+			ModifyGraph lsize($average_name)=1.2
 		endif
 	endfor
 	SetDataFolder saveDFR
@@ -705,7 +836,7 @@ Function remove_avg()
 	string sweeplist=tracenamelist("",";",1)
 	sweeplist=listmatch(sweeplist, "*_avg")
 	variable i
-	for (i=itemsinlist(sweeplist,";")-1; i>=0;i-=1) //remove all existing sweeps, this may be made optional later
+	for (i=itemsinlist(sweeplist,";")-1; i>=0;i-=1) 
 		string sweepname=stringfromlist(i,sweeplist)
 		
 		RemoveFromGraph/W=photoStim_graph/Z $sweepname
@@ -783,12 +914,21 @@ Function makeTempSweep(variable sweepnumber)
 end
 
 
-Function check_baseline_for_sweep(sweep,target_v)
+Function check_baseline_for_sweep(sweep,[target_v])
 	variable sweep, target_v
 	variable tolerance = 5
+	variable clampMode
 	DFREF saveDFR = GetDataFolderDFR()
 	wave mapInfo_wv=root:opto_df:mapInfo
+	string panelTitle="ITC18USB_Dev_0"
+	WAVE numericalValues = GetLBNumericalValues(panelTitle)
 	
+	wave/z clampModes=getlastsetting(numericalValues,sweep,"Clamp Mode",DATA_ACQUISITION_MODE)
+	wavestats/q clampModes
+	variable anyCC=V_sum
+	if(anyCC>0)
+		wave/z targetVs=getlastsetting(numericalValues,sweep,"Autobias Vcom",DATA_ACQUISITION_MODE)
+	endif
 	setdatafolder root:MIES:ITCDevices:ITC18USB:Device0:Data:
 	string config_name="Config_Sweep_"+num2str(sweep)
 	string sweep_name="Sweep_"+num2str(sweep)
@@ -798,32 +938,51 @@ Function check_baseline_for_sweep(sweep,target_v)
 	endif
 	wave W_config=$config_name
 	wave W_sweep=$sweep_name
+	variable pockel_start=mapInfo_wv[dimLabel][3]
+		
+	pockel_start*=-1
 	variable j
 	for (j=0;j<dimsize(W_config,0);j+=1)
 		if (W_config[j][0] == 0) //if this is an AD_trace...
 			variable HS_num=W_config[j][1]
-			string dimlabel_name="AD"+num2str(HS_num)+"_qc"
-			variable HS_dimLabel=FindDimLabel(mapInfo_wv,1,dimlabel_name)
 			if (HS_num<=3)
-				string temp_name=sweep_name+"_AD"+num2str(HS_num)
-				
-				Duplicate/o/r=[][j] W_sweep root:opto_df:$temp_name
-				wave temp_wave=root:opto_df:$temp_name
-				
-				wavestats/q/r=[0,100] temp_wave
-				variable startV=V_avg
-				if (abs(startV-target_v)>tolerance)
-					print sweep_name+", heastage "+num2str(HS_num)
-					print "    starting V = "+num2str(startV)
-					mapinfo_wv[dimlabel][HS_dimlabel]+=1
-				endif
-				variable lastp=numpnts(temp_wave)
-				wavestats/q/r=[lastp-100, lastp] temp_wave
-				variable endV=V_avg
-				if(abs(endV-startv)>3)
-					print sweep_name+", heastage "+num2str(HS_num)
-					print "    big change"
-					mapinfo_wv[dimlabel][HS_dimlabel]+=1
+				string dimlabel_name="AD"+num2str(HS_num)+"_qc"
+				variable HS_dimLabel=FindDimLabel(mapInfo_wv,1,dimlabel_name)
+				if(numtype(mapinfo_wv[dimlabel][HS_dimlabel])==2)
+					mapinfo_wv[dimlabel][HS_dimlabel]=0
+			
+					string temp_name=sweep_name+"_AD"+num2str(HS_num)
+					//print "target V is "+num2str(targetvs[HS_num])
+					
+					clampMode=clampModes[HS_num]
+					if (clampMode == 1)
+						target_v=targetvs[HS_num]
+						Duplicate/o/r=[][j] W_sweep root:opto_df:$temp_name
+						wave temp_wave=root:opto_df:$temp_name
+						SetScale/P x pockel_start, deltax(temp_wave), temp_wave
+						wavestats/M=1/q/r=[0,100] temp_wave
+						variable startV=V_avg
+						if (abs(startV-target_v)>tolerance)
+							print sweep_name+", headstage "+num2str(HS_num)
+							print "    starting V = "+num2str(startV)
+							mapinfo_wv[dimlabel][HS_dimlabel]+=1
+						endif
+						variable lastp=numpnts(temp_wave)
+						wavestats/M=1/q/r=[lastp-100, lastp] temp_wave
+						variable endV=V_avg
+						if(abs(endV-startv)>3)
+							print sweep_name+", headstage "+num2str(HS_num)
+							print "    big change"
+							mapinfo_wv[dimlabel][HS_dimlabel]+=1
+						endif
+						wavestats/M=1/q/r=(-20,0) temp_wave
+						variable range=V_max-V_min
+						if(range>=1)
+							print sweep_name+", headstage "+num2str(HS_num)
+							print "   sudden change before stim"
+							mapinfo_wv[dimlabel][HS_dimlabel]+=1
+						endif
+					endif
 				endif
 			endif
 				
@@ -834,5 +993,99 @@ Function check_baseline_for_sweep(sweep,target_v)
 	endfor
 	SetDataFolder saveDFR
 end
+
+
 	
+Function fail_selected_sweep()
+	string trace_name=csrwave(A)
+	variable sweepend=strsearch(trace_name,"_",6) //sweep name will be Sweep_**_AD* number of digits in sweep number could be 1-4
+	variable sweep_number=str2num(trace_name[6,sweepend-1])
+	variable HS_number=str2num(trace_name[strlen(trace_name)-1,strlen(trace_name)])
+	wave mapinfo_wv=root:opto_df:mapinfo
+	string sweep_name="Sweep_"+num2str(sweep_number)
+	variable dimLabel=FindDimLabel(mapinfo_wv,0,sweep_name)
+	variable column_number=7+HS_number
+	mapinfo_wv[dimLabel][column_number]+=10
+end
+
+Function call_cnx(call)
+	string call
+	string trace_name=csrwave(A, "photoStim_graph")
+	if (strlen(trace_name)<1)
+		print "cursor is not on a wave"
+		return 0
+	endif
+	variable HS_loc=strsearch(trace_name, "AD",0)+2
+	variable headstage=str2num(trace_name[HS_loc])
 	
+	controlinfo/W=photostim_ops popup_PSID
+    
+   string photostim_name="photoStim_"+s_value+"_AD"+num2str(headstage)
+   variable PS_ID=str2num(s_value)
+	make_cnx_folder(photostim_name)
+	//SetDataFolder "root:opto_df:"+photostim_name
+	get_EPSP_props_graph(PS_ID,headstage, photostim_name)
+	
+end
+
+
+
+
+
+function check_baselin_for_sweep_CC(sweep_wv, HS_num, dimLabel, HS_dimLabel)
+	wave sweep_wv
+	variable HS_num, dimLabel, HS_dimLabel
+	variable tolerance=5
+	wave mapInfo_wv=root:opto_df:mapInfo
+	wave targetvs=root:opto_df:targetvs
+	string panelTitle="ITC18USB_Dev_0"
+	string sweep_name=nameofwave(sweep_wv)
+	wavestats/M=1/q/r=[0,100] sweep_wv
+	variable target_v=targetvs[HS_num]
+	variable startV=V_avg
+	if (abs(startV-target_v)>tolerance)
+		print sweep_name+", headstage "+num2str(HS_num)
+		print "    starting V = "+num2str(startV)
+		mapinfo_wv[dimlabel][HS_dimlabel]+=1
+	endif
+	variable lastp=numpnts(sweep_wv)
+	wavestats/M=1/q/r=[lastp-100, lastp] sweep_wv
+	variable endV=V_avg
+	if(abs(endV-startv)>3)
+		print sweep_name+", headstage "+num2str(HS_num)
+		print "    big change"
+		mapinfo_wv[dimlabel][HS_dimlabel]+=1
+	endif
+	wavestats/M=1/q/r=(-20,0) sweep_wv
+	variable range=V_max-V_min
+	if(range>=1)
+		print sweep_name+", headstage "+num2str(HS_num)
+		print "   sudden change before stim"
+		mapinfo_wv[dimlabel][HS_dimlabel]+=1
+	endif
+
+end
+
+function check_baseline_for_sweep_VC(sweep_wv, HS_num, dimLabel, HS_dimLabel)
+	wave sweep_wv
+	variable HS_num, dimLabel, HS_dimLabel
+	variable max_i=1000
+	wave mapInfo_wv=root:opto_df:mapInfo
+	string panelTitle="ITC18USB_Dev_0"
+	string sweep_name=nameofwave(sweep_wv)
+	wavestats/M=1/q/r=[0,100] sweep_wv
+	variable startI=V_avg
+	if (abs(startI)>max_i)
+		print sweep_name+", headstage "+num2str(HS_num)
+		print "    holding current "+num2str(startI)
+		mapinfo_wv[dimlabel][HS_dimlabel]+=1
+	endif
+	variable lastp=numpnts(sweep_wv)
+	wavestats/M=1/q/r=[lastp-100, lastp] sweep_wv
+	variable endI=V_avg
+	if(abs(endI-startI)>100)
+		print sweep_name+", headstage "+num2str(HS_num)
+		print "    big change"
+		mapinfo_wv[dimlabel][HS_dimlabel]+=1
+	endif
+end

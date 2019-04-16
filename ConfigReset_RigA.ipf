@@ -89,7 +89,6 @@ Function Go()
 
 	PGC_setAndActivateControl(panelTitle, "Check_AD_06",val=1)
 	PGC_setAndActivateControl(panelTitle, "Gain_AD_06",val=1)
-	
 	for(i = 0; i<numHeadStages; i+=1)
 
 		PGC_setAndActivateControl(panelTitle, "slider_DataAcq_ActiveHeadstage",val=i)
@@ -105,7 +104,7 @@ Function Go()
 	
 		PGC_setAndActivateControl(panelTitle, "SetVar_DataAcq_AutoBiasV",val=-70)
 		PGC_setAndActivateControl(panelTitle, "SetVar_DataAcq_AutoBiasVrange",val=1)
-		PGC_setAndActivateControl(panelTitle, "setvar_DataAcq_IbiasMax",val=800)
+		PGC_setAndActivateControl(panelTitle, "setvar_DataAcq_IbiasMax",val=1000)
 		PGC_setAndActivateControl(panelTitle, "check_DataAcq_AutoBias",val=0)
 	endfor
 	PGC_setAndActivateControl(panelTitle, "slider_DataAcq_ActiveHeadstage",val=0)
@@ -123,6 +122,7 @@ Function Go()
 	PGC_setAndActivateControl(panelTitle, "Check_DataAcqHS_03",val=1)
 	PGC_setAndActivateControl(panelTitle, "StartTestPulseButton")
 	
+
 	PGC_setandActivateControl(panelTitle, "Check_settings_TPAfterDAQ", val=1)
 	PGC_setandActivateControl(panelTitle, "check_Settings_TP_SaveTPRecord", val=1) //TH add
 	PGC_setandActivateControl(panelTitle, "SetVar_DataAcq_TPDuration", val=10) //TH add
@@ -134,8 +134,8 @@ Function Go()
 	PGC_setandActivateControl(panelTitle, "Title_AsyncAD_07", str="temperature")
 	PGC_setandActivateControl(panelTitle, "Gain_AsyncAD_07", val=0.1)
 	PGC_setandActivateControl(panelTitle, "Check_AsyncAD_07", val=1)
-	NWB_LoadAllStimsets(fileName="C:Travis MIES:stimsets_1109.nwb") //TH add
-	
+	NWB_LoadAllStimsets(fileName="C:Travis MIES:stimsets_190219.nwb") //TH add
+	PGC_setandActivateControl(panelTitle, "SetVar_DataAcq_TPBaselinePerc", val=40)
 	//NWB_LoadAllStimsets(fileName="C:Travis MIES:old Igor pxps:1P_stim_wPWM_2.nwb")
 	Exp_con_gui() //TH add
 	make_opto_folder()
