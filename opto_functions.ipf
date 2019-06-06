@@ -33,8 +33,9 @@ Function run_mapping_sweep_short(stimpoint_id, stim_num)
 end
 
 
-Function run_mapping_sweep(stimPoint_ID, stim_num)
-	variable stimPoint_ID, stim_num
+Function run_mapping_sweep(stimPoint_ID, stim_num, x_offset, y_offset, z_offset)
+	variable stimPoint_ID, stim_num, x_offset, y_offset, z_offset
+	
 	wave mapInfo_wv=root:opto_df:mapInfo
 	wave sP_ID_wv=root:opto_df:photoStim_ID
 	wave stim_num_wv=root:opto_df:stim_num
@@ -61,6 +62,9 @@ Function run_mapping_sweep(stimPoint_ID, stim_num)
 	mapInfo_wv[dimLabel][1]=stimPoint_ID
 	mapInfo_wv[dimLabel][2]=stim_num
 	mapInfo_wv[dimLabel][6]=round_num
+	mapInfo_wv[dimLabel][11]=x_offset
+	mapInfo_wv[dimLabel][12]=y_offset
+	mapInfo_wv[dimLabel][13]=z_offset
 	sp_ID_wv[8]=stimPoint_ID
 	stim_num_wv[8]=stim_num
 	//pockel_times_for_sweep(LastSweep)
@@ -117,7 +121,7 @@ Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experi
 	if (count_headstages==1) //set sampling rate to avoid filling memory
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 	endif
@@ -434,7 +438,7 @@ Function pairCheck()
 	if (count_headstages==1) //set sampling rate to avoid filling memory
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
@@ -484,7 +488,7 @@ end
 
 
 Function intrinsic()
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=1) //indexing to run multiple stim
+	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //indexing to run multiple stim
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=1) //distribute in case there are synapses
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Get_Set_ITI", val=1) //use ITI's from protocols
 	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=0) //turn off the lights
@@ -494,10 +498,11 @@ Function intrinsic()
 	
 	string intrins_list = ReturnListofAllStimSets(CHANNEL_TYPE_DAC,"*intrins*") //find all intrinsic protocols and corresponding #'s in popups
 	string all_dacs = ReturnListofAllStimSets(0,"*DA*") 
-	string first_intrins = stringfromlist(0,intrins_list)
-	string last_intrins = stringfromlist(itemsinlist(intrins_list, ";")-1, intrins_list)
-	variable first_num=whichListItem(first_intrins,all_dacs)+1 //+1 to compensate for "none" in popup
-	variable last_num=whichListItem(last_intrins,all_dacs)+1
+	//string first_intrins = stringfromlist(0,intrins_list)
+	//string last_intrins = stringfromlist(itemsinlist(intrins_list, ";")-1, intrins_list)
+	//variable first_num=whichListItem(first_intrins,all_dacs)+1 //+1 to compensate for "none" in popup
+	//variable last_num=whichListItem(last_intrins,all_dacs)+1
+	variable stim_set_num = whichListItem("intrins_steps_DA_0", all_dacs)+1 //+1 to comp for 'none'
 	variable i
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
@@ -507,15 +512,16 @@ Function intrinsic()
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
 			string last_da_drop = "IndexEnd_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=first_num)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", last_da_drop, val=last_num)
+			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			//PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=first_num) //originally ran 3 intrinsic protocols, but changed to just long steps, code left in for ease of going back
+			//PGC_setandactivatecontrol("ITC18USB_Dev_0", last_da_drop, val=last_num)
 			count_headstages+=1
 		endif
 	endfor
 	if (count_headstages==1) //set sampling rate to avoid filling memory
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
@@ -576,7 +582,7 @@ Function mapping([cells, reps, checkAppend])
 	if (count_headstages==1) //set sampling rate to avoid filling memory
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
@@ -660,7 +666,7 @@ Function mapping_short(cells, reps, checkAppend)
 	if (count_headstages==1) //set sampling rate to avoid filling memory
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
 		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
@@ -698,13 +704,14 @@ Function make_opto_folder()
 		make/o/n=1 root:opto_df:round_count
 		wave round_count=root:opto_df:round_count
 		round_count=0
+		make_cnx_stats()
 	endif
 end
 
 Function make_mapInfo_wave()
 	DFREF saveDFR = GetDataFolderDFR()		// Save
 	SetDataFolder root:opto_df
-	make/o/N=(1,11)/D mapInfo
+	make/o/N=(1,14)/D mapInfo
 		SetDimLabel 1, 0, sweep, mapInfo
 		SetDimLabel 1, 1, stimPoint_ID, mapInfo
 		SetDimLabel 1, 2, stim_num, mapInfo
@@ -716,7 +723,10 @@ Function make_mapInfo_wave()
 		SetDimLabel 1, 8, AD1_qc, mapinfo
 		SetDimLabel 1, 9, AD2_qc, mapinfo
 		SetDimLabel 1, 10, AD3_qc, mapinfo
-		SetDimLabel 0, 0, sweep_0, mapInfo
+		SetDimLabel 1, 11, x_off, mapinfo
+		SetDimLabel 1, 12, y_off, mapinfo
+		SetDimLabel 1, 13, z_off, mapinfo
+		SetDimLabel 0, 0, sweep_0, mapinfo
 	mapInfo=NaN
 	SetDataFolder saveDFR
 end
@@ -753,6 +763,25 @@ Function make_cnx_stats()
 	SetDataFolder saveDFR
 end
 	
+Function make_sigNoise_wave()
+	DFREF saveDFR = GetDataFolderDFR()		// Save
+	SetDataFolder root:opto_df
+
+	Make/o/n=(1,8) sigNoise
+	sigNoise=NaN
+	SetDimLabel 1,0, AD0_back, sigNoise
+	SetDimLabel 1,1, AD0_sig, sigNoise
+	SetDimLabel 1,2, AD1_back, sigNoise
+	SetDimLabel 1,3, AD1_sig, sigNoise
+	SetDimLabel 1,4, AD2_back, sigNoise
+	SetDimLabel 1,5, AD2_sig, sigNoise
+	SetDimLabel 1,6, AD3_back, sigNoise
+	SetDimLabel 1,7, AD3_sig, sigNoise
+	
+	SetDataFolder saveDFR
+end	
+	
+
 Function write_map_settings(first_sweep, cells, num_reps, checkAppend)
 	variable first_sweep, cells, num_reps, checkAppend
 	DFREF saveDFR = GetDataFolderDFR()		// Save
@@ -1411,7 +1440,7 @@ Function distribute_sweeps()
 
                 if (trace_range>3)
 
-                    trace_range=1
+                    trace_range=trace_range/2
 
                     
 

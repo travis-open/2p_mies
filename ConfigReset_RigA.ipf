@@ -227,7 +227,7 @@ Function SaveIt()
 	string dateString=getTimeStamp()[0,10]
 	string full_name=dateString+"exp"+num2str(experiment_number)+"_"+user+".pxp"
 	if (cmpstr(user,"TH")==0)
-		NewPath/o/C savePath, "C:Travis MIES:"+datestring[0,9]
+		NewPath/o/C savePath, "C:Travis_acq4:"
 	elseif (cmpstr(user,"LH")==0)
 		print "hi Lawrence"
 		NewPath/o/C savePath, "C:Lawrence:"+datestring[0,9]

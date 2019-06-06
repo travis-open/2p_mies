@@ -1,4 +1,4 @@
-#pragma TextEncoding = "Windows-1252"
+#pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 
 Function make_photoStim_graph()
@@ -36,7 +36,7 @@ Function photostim_gui()
 	Checkbox HS_3, title="HS 3", value=0, help={"toggle headstage display"}, proc=HS_CB_proc
 	GroupBox cnxbox, size={90,300}, title="connection", frame=0
 	Button excitatory, title="excitatory", pos={5,520}, size={70,20}, proc=ButtonProc_excitatory
-	Button inhibitory, title="inhibitory", pos={5,545}, size={70,20}
+	Button inhibitory, title="inhibitory", pos={5,545}, size={70,20}, proc=ButtonProc_inhibitory
 	Button refine_bl, title="fine offset", pos={5,570}, size={70,20}, proc=ButtonProc_fine_offset
 	SetVariable refine_bl_start, title="", bodyWidth=45, value= _NUM:0
 	SetVariable refine_bl_end, title="", bodyWidth=45, value=_NUM:10
@@ -49,7 +49,7 @@ Function ButtonProc_excitatory(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up
-			call_cnx("excitatory")
+			call_cnx(1)
         	break
        case -1: //control being killed
        	break
@@ -59,7 +59,19 @@ Function ButtonProc_excitatory(ba) : ButtonControl
  end
 
 
+Function ButtonProc_inhibitory(ba) : ButtonControl
+    STRUCT WMButtonAction &ba
 
+    switch( ba.eventCode )
+        case 2: // mouse up
+			call_cnx(2)
+        	break
+       case -1: //control being killed
+       	break
+       endswitch
+       
+       return 0
+ end
 
 
 
@@ -563,11 +575,12 @@ function find_id(id)
 	setdatafolder root:opto_df:
 	wave mother_wv=root:opto_df:mapInfo
 	variable length=dimsize(mother_wv,0)
-	Make/o/n=(length) stimIDs, sweeps, powers
+	Make/o/n=(length) stimIDs, sweeps, powers, z_offs
 	stimIDs=mother_wv[p][1]
 	powers=mother_wv[p][4]
+	z_offs=mother_wv[p][13]
 	duplicate/o stimIDs indexes
-	indexes=(stimIDs[p]==id && powers[p]!=0) ? p : NaN //indexes for stims with given ID and power not equal to 0 (trace hasn't been analyzed yet)
+	indexes=(stimIDs[p]==id && powers[p]!=0 && z_offs[p]==0) ? p : NaN //indexes for stims with given ID and power not equal to 0 (trace hasn't been analyzed yet) and no z-offset
 	WaveTransform zapNaNs, indexes
 	duplicate/o indexes sweeps
 	variable i
@@ -584,11 +597,12 @@ Function find_id_power(id, power)
 	setdatafolder root:opto_df:
 	wave mother_wv=root:opto_df:mapInfo
 	variable length=dimsize(mother_wv,0)
-	Make/o/n=(length) stimIDs, powers
+	Make/o/n=(length) stimIDs, powers, z_offs
 	stimIDs=mother_wv[p][1]
 	powers=mother_wv[p][4]
+	z_offs=mother_wv[p][13]
 	duplicate/o stimIDs indexes
-	indexes=(stimIDs[p]==id && powers[p]==power) ? p : NaN
+	indexes=(stimIDs[p]==id && powers[p]==power && z_offs[p]==0) ? p : NaN
 	WaveTransform zapNaNs, indexes
 	duplicate/o indexes sweeps
 	variable i
@@ -714,11 +728,13 @@ Function plot_stimID(stimID,[power,round_num,applyQC])
 					if(applyQC==0 || QC_state==0) //if either QC is turned off, or this sweep/HS has not failed, plot it
 					
 						string temp_name=sweep_name+"_AD"+num2str(HS_num)
-				
+						string unit_s=AFH_GetChannelUnit(W_config, HS_num, 0)
+						
 						Duplicate/o/r=[][j] W_sweep root:opto_df:$temp_name
 						wave temp_wave=root:opto_df:$temp_name
 						variable dt=deltax(temp_wave)
 						SetScale/P x pockel_start, dt, temp_wave
+						SetScale d 0,0, unit_s, temp_wave
 						if(dt<0.04)
 							smooth 32, temp_wave
 						else	
@@ -760,7 +776,7 @@ Function prettygraph()
 			variable axistop = axeslimits[j]-.01
 			ModifyGraph freePos($axis_name)=0
 			ModifyGraph axisEnab($axis_name)={axisbottom,axistop}
-			Label $axis_name axis_name
+			Label $axis_name axis_name[2,4]+" (\\U)"
 			ModifyGraph lblPos($axis_name)=50
 			SetAxis/A=2 $axis_name
 			j+=1
@@ -1008,8 +1024,8 @@ Function fail_selected_sweep()
 	mapinfo_wv[dimLabel][column_number]+=10
 end
 
-Function call_cnx(call)
-	string call
+Function call_cnx(riseOrFall)
+	variable riseOrFall
 	string trace_name=csrwave(A, "photoStim_graph")
 	if (strlen(trace_name)<1)
 		print "cursor is not on a wave"
@@ -1024,8 +1040,8 @@ Function call_cnx(call)
    variable PS_ID=str2num(s_value)
 	make_cnx_folder(photostim_name)
 	//SetDataFolder "root:opto_df:"+photostim_name
-	get_EPSP_props_graph(PS_ID,headstage, photostim_name)
-	
+	//get_EPSP_props_graph(PS_ID,headstage, photostim_name)
+	get_PSP_props_graph(riseORfall, PS_ID, headstage, photostim_name)
 end
 
 
@@ -1089,3 +1105,151 @@ function check_baseline_for_sweep_VC(sweep_wv, HS_num, dimLabel, HS_dimLabel)
 		mapinfo_wv[dimlabel][HS_dimlabel]+=1
 	endif
 end
+
+
+
+
+
+Function show_z_off(stimPoint, HS, round_id, applyQC)
+	variable stimPoint, HS, round_id, applyQC
+	variable i,j
+	DFREF saveDFR = GetDataFolderDFR()
+	find_id_round(stimPoint, round_id)
+	wave sweeps=root:opto_df:sweeps
+	wave indexes=root:opto_df:indexes
+	wave tracking=root:opto_df:mapInfo
+	variable reps=numpnts(sweeps)
+	Display
+	
+	setdatafolder root:MIES:ITCDevices:ITC18USB:Device0:Data:
+	for(i=0; i<reps; i+=1) //for each sweep
+		variable sweepnumber=sweeps[i]
+		variable index=indexes[i]
+		string config_name="Config_Sweep_"+num2str(sweepnumber)
+		string sweep_name="Sweep_"+num2str(sweepnumber)
+		variable pockel_start=tracking[index][3]
+		
+		pockel_start*=-1
+		
+		wave W_config=$config_name
+		wave W_sweep=$sweep_name
+		variable trace_count=0
+		for (j=0;j<dimsize(W_config,0);j+=1) //for each channel...
+			if(numtype(pockel_start)==2)
+				
+				break
+			endif
+			if (W_config[j][0] == 0) //if this is an AD_trace...
+				variable HS_num=W_config[j][1]
+				if(HS_num==HS || HS_num==6) //if we want to display this trace
+					if(HS_num==6)
+						variable QC_state=0
+						string axis_name="L_AD"+num2str(HS_num)
+						string z_string=""
+					else
+						QC_state=tracking[index][HS_num+7] //kludgey until something better
+						variable z_off=tracking[index][13]*1e6
+						if(z_off<0)
+							//axis_name="L_n"+num2str(abs(z_off))
+							z_string="n"+num2str(abs(z_off))
+						else
+							z_string="p"+num2str(abs(z_off))
+							//axis_name="L_"+num2str(z_off)
+						endif
+							axis_name="L_"+z_string
+					endif
+					if(applyQC==0 || QC_state==0) //if either QC is turned off, or this sweep/HS has not failed, plot it
+					
+						string temp_name=sweep_name+"_AD"+num2str(HS_num)+z_string
+						string unit_s=AFH_GetChannelUnit(W_config, HS_num, 0)
+						
+						Duplicate/o/r=[][j] W_sweep root:opto_df:$temp_name
+						wave temp_wave=root:opto_df:$temp_name
+						variable dt=deltax(temp_wave)
+						SetScale/P x pockel_start, dt, temp_wave
+						SetScale d 0,0, unit_s, temp_wave
+						if(dt<0.04)
+							smooth 32, temp_wave
+						else	
+							smooth 20, temp_wave
+						endif
+						
+					
+						appendtograph/L=$axis_name root:opto_df:$temp_name //append it to the correct axis				
+						trace_count+=1
+					endif
+				endif
+			endif
+		endfor //end of channel loop
+	endfor //end of sweep loop
+	ModifyGraph rgb=(0,0,0)
+	SetDataFolder saveDFR
+	offset_y(-10,0)
+	pretty_zoff()
+	zoff_avg()
+
+end
+
+function pretty_zoff()
+	DFREF saveDFR = GetDataFolderDFR()
+	SetDataFolder root:opto_df
+	variable i, j
+	string axis_name
+	string axes="L_p30;L_p20;L_p10;L_p0;L_n10;L_n20;L_n30;L_ad6"
+	string labels="+30 μm\r(\\U);+20μm\r(\\U);+10μm\r(\\U);0μm\r(\\U);-10μm\r(\\U);-20μm\r(\\U);-30μm\r(\\U)"
+	variable numaxes=itemsinlist(axes,";")
+	Make/o/n=(numaxes) axeslimits
+	axeslimits=1-0.9*x/(numaxes-1)
+	j=0
+	for (i=0;i<(numaxes);i+=1)
+		axis_name=stringfromlist(i,axes)
+		string label_i=stringfromlist(i,labels)
+		if(CmpStr(axis_name, "L_AD6")!=0)
+			variable axisbottom = axeslimits[j+1]+.01
+			variable axistop = axeslimits[j]-.01
+			ModifyGraph freePos($axis_name)=0
+			ModifyGraph axisEnab($axis_name)={axisbottom,axistop}
+			//Label $axis_name axis_name[2,4]+" (\\U)"
+			Label $axis_name label_i
+			ModifyGraph lblPos($axis_name)=50
+			SetAxis/A=2 $axis_name
+			j+=1
+		endif
+	endfor
+	ModifyGraph margin(right)=1,margin(top)=1,margin(left)=35,margin(bottom)=30
+	ModifyGraph freePos(L_AD6)=0
+	ModifyGraph axisEnab(L_AD6)={0,0.09}
+	Label L_AD6 "L_AD6"
+	ModifyGraph lblPos(L_AD6)=50
+	ModifyGraph fSize=8
+	ModifyGraph axThick=1.2
+	ModifyGraph nticks=3
+	SetDataFolder saveDFR
+end
+
+function zoff_avg()
+	DFREF saveDFR = GetDataFolderDFR()
+	SetDataFolder root:opto_df
+	string axes=axislist("")
+	axes=listmatch(axes, "L*")
+	variable numaxes = itemsinlist(axes,";")
+	variable i
+	for (i=0; i<(numaxes);i+=1)
+		string axis_name=stringfromlist(i,axes)
+		if(CmpStr(axis_name,"L_AD6")!=0)
+			string wavematch=axis_name[2,4]
+			string average_name=wavematch+"_avg"
+			string error_name=wavematch+"_err"
+			string sweep_list_axis = waveList(("*"+wavematch+"*"), ";", "WIN:")
+			fWaveAverage(sweep_list_axis,"",1,1,average_name,error_name)
+			wave average_wave=$average_name
+			wave error_wave=$error_name
+			appendtograph/l=$axis_name average_wave		
+			ErrorBars $average_name SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=(error_wave,error_wave)
+			ModifyGraph lsize($average_name)=1.2
+		endif
+	endfor
+	SetDataFolder saveDFR
+end
+
+
