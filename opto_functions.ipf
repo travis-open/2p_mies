@@ -1139,6 +1139,9 @@ Function ButtonProc_plot_next(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up
+        
+        	//snr_graph_t(1,20)
+        		
             controlinfo/W=stim_monitor_ops setvarsweep
             variable param0=v_value
             controlinfo/W=stim_monitor_ops setvarInterval
@@ -2055,11 +2058,14 @@ End
 Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MPT, scale)
 	variable first_sweep, interval, reps, MPT, yoffset_check, x_start, x_end, scale
 	variable i, j, trace, total_traces
+	variable QC=1 //in place for later analysis of old data.
+	wave mapInfo=root:opto_df:mapInfo
 	string sweeplist=tracenamelist("",";",1)
 	for (i=itemsinlist(sweeplist,";")-1; i>=0;i-=1) //remove all existing sweeps, this may be made optional later
 		string sweepname=stringfromlist(i,sweeplist)
 		RemoveFromGraph/W=stim_monitor/Z $sweepname
 	endfor
+	
 	setdatafolder root:opto_df:
 	
 	string kill_list=wavelist("Sweep_*", ";","")  //sounds dark, unfortunately
@@ -2075,6 +2081,8 @@ Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MP
 		variable sweepnumber=(first_sweep + MPT - 1)+interval*i
 		string config_name="Config_Sweep_"+num2str(sweepnumber)
 		string sweep_name="Sweep_"+num2str(sweepnumber)
+		variable MI_index=FindDimLabel(mapInfo, 0, sweep_name)
+		
 		wave W_config=$config_name
 		wave W_sweep=$sweep_name
 		variable trace_count=0
@@ -2084,9 +2092,14 @@ Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MP
 				
 				Duplicate/o/r=[][j] W_sweep root:opto_df:$temp_name
 				wave temp_wave=root:opto_df:$temp_name
+				
 				string axis_name="L_AD"+num2str(W_config[j][1])
-				appendtograph/L=$axis_name root:opto_df:$temp_name //append it to the correct axis				
-				trace_count+=1
+				variable HS_Num=W_config[j][1]
+				variable QC_state=mapInfo[MI_index][(HS_num+7)]
+				if(QC_state==0 || HS_num==6)
+					appendtograph/L=$axis_name root:opto_df:$temp_name //append it to the correct axis				
+					trace_count+=1
+				endif
 			endif
 			sweeplist=tracenamelist("",";",1)
 			total_traces=itemsinlist(sweeplist,";")
@@ -2103,6 +2116,14 @@ Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MP
 					for (trace=total_traces-1; trace>=total_traces-trace_count; trace-=1)
 						wave theWave=WaveRefIndexed("",trace,1)
 						SetScale/P x x_offset_value, deltax(theWave), theWave
+						variable dt=deltax(theWave)
+						if(dt<0.04)
+							
+							smooth 32, theWave
+						else	
+							
+							smooth 20, theWave
+						endif
 						if (yoffset_check==1)
 							//wavestats/q/r=(-200,0) theWave
 							variable med=median(theWave, -50,0)
@@ -2124,25 +2145,27 @@ Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MP
 	Make/o/n=(numaxes) axeslimits
 	axeslimits=1-0.9*x/(numaxes-1)
 
-	for (i=0;i<(numaxes-1);i+=1)
+	for (i=0;i<(numaxes);i+=1)
 		axis_name=stringfromlist(i,axes)
-		string wavematch="*"+axis_name[2,4]
-		string average_name="T"+num2str(first_sweep)+"_"+num2str(MPT)+"_"+axis_name[2,4]+"_avg"
-		string error_name="T"+num2str(first_sweep)+"_"+num2str(MPT)+"_"+axis_name[2,4]+"_err"
-		variable axisbottom = axeslimits[i+1]+.01
-		variable axistop = axeslimits[i]-.01
-		ModifyGraph freePos($axis_name)=0
-		ModifyGraph axisEnab($axis_name)={axisbottom,axistop}
-		Label $axis_name axis_name
-		ModifyGraph lblPos($axis_name)=50
-		SetAxis/A=2 $axis_name
-		string sweep_list_axis = waveList(wavematch,";","WIN:")
-		//print sweep_list_axis
-		fWaveAverage(sweep_list_axis,"",1,1,average_name,error_name)
-		wave average_wave=$average_name
-		wave error_wave=$error_name
-		appendtograph/l=$axis_name average_wave
-		ErrorBars $average_name SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=(error_wave,error_wave)
+		if(CmpStr(axis_name,"L_AD6")!=0)
+			string wavematch="*"+axis_name[2,4]
+			string average_name="T"+num2str(first_sweep)+"_"+num2str(MPT)+"_"+axis_name[2,4]+"_avg"
+			string error_name="T"+num2str(first_sweep)+"_"+num2str(MPT)+"_"+axis_name[2,4]+"_err"
+			variable axisbottom = axeslimits[i+1]+.01
+			variable axistop = axeslimits[i]-.01
+			ModifyGraph freePos($axis_name)=0
+			ModifyGraph axisEnab($axis_name)={axisbottom,axistop}
+			Label $axis_name axis_name
+			ModifyGraph lblPos($axis_name)=50
+			SetAxis/A=2 $axis_name
+			string sweep_list_axis = waveList("*"+wavematch,";","WIN:")
+			//print sweep_list_axis
+			fWaveAverage(sweep_list_axis,"",1,1,average_name,error_name)
+			wave average_wave=$average_name
+			wave error_wave=$error_name
+			appendtograph/l=$axis_name average_wave
+			ErrorBars $average_name SHADE= {0,4,(0,0,0,0),(0,0,0,0)},wave=(error_wave,error_wave)
+		endif
 	endfor
 	ModifyGraph freePos(L_AD6)=0
 	ModifyGraph axisEnab(L_AD6)={0,0.09}
@@ -2152,6 +2175,31 @@ Function plot_avg(first_sweep, interval, reps,yoffset_check,  x_start, x_end, MP
 		Setaxis bottom x_start, x_end
 	endif
 End
+
+Function make_TS_qc_wave(sweeps)
+	variable sweeps
+	DFREF saveDFR = GetDataFolderDFR()
+	SetDataFolder root:opto_df
+	Make/N=(1,14)/D/o mapInfo
+
+
+	SetDataFolder saveDFR
+end
+
+
+Function check_qc_TS_post(sweep)
+	variable sweep
+	wave mapInfo_wv=root:opto_Df:mapinfo
+	string dim_name="sweep_"+num2str(sweep)
+	variable dimLabel=FindDimLabel(mapInfo_wv,0,dim_name)
+	if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
+		InsertPoints/M=0 0, 1, mapInfo_wv
+		mapinfo_wv[0][]=NaN
+		SetDimLabel 0, 0, $dim_name, mapInfo_wv
+		dimLabel=0
+	endif
+	check_baseline_for_sweep(sweep)
+end
 
 Function single_hs(headstage)
 	variable headstage
@@ -2310,4 +2358,12 @@ Function pockel_times_for_sweep(sweep)
 			mapInfo_wv[dimLabel][5]=sweepEnd
 		endif
 	endif
+end
+
+function snr_up(last)
+	variable last
+	make_mapinfo_wave()
+	make_snr_df()
+	posthoc_qc(0,last)
+
 end

@@ -580,7 +580,7 @@ function find_id(id)
 	powers=mother_wv[p][4]
 	z_offs=mother_wv[p][13]
 	duplicate/o stimIDs indexes
-	indexes=(stimIDs[p]==id && powers[p]!=0 && z_offs[p]==0) ? p : NaN //indexes for stims with given ID and power not equal to 0 (trace hasn't been analyzed yet) and no z-offset
+	indexes=(stimIDs[p]==id && powers[p]!=0 && abs(z_offs[p])<=10e-6) ? p : NaN //indexes for stims with given ID and power not equal to 0 (trace hasn't been analyzed yet) and no z-offset
 	WaveTransform zapNaNs, indexes
 	duplicate/o indexes sweeps
 	variable i
@@ -602,7 +602,7 @@ Function find_id_power(id, power)
 	powers=mother_wv[p][4]
 	z_offs=mother_wv[p][13]
 	duplicate/o stimIDs indexes
-	indexes=(stimIDs[p]==id && powers[p]==power && z_offs[p]==0) ? p : NaN
+	indexes=(stimIDs[p]==id && powers[p]==power && abs(z_offs[p])<=10e-6) ? p : NaN
 	WaveTransform zapNaNs, indexes
 	duplicate/o indexes sweeps
 	variable i
@@ -1186,7 +1186,7 @@ Function show_z_off(stimPoint, HS, round_id, applyQC)
 	SetDataFolder saveDFR
 	offset_y(-10,0)
 	pretty_zoff()
-	zoff_avg()
+	zoff_avg(stimPoint, HS)
 
 end
 
@@ -1227,7 +1227,8 @@ function pretty_zoff()
 	SetDataFolder saveDFR
 end
 
-function zoff_avg()
+function zoff_avg(stimPoint, HS)
+	variable stimPoint, HS
 	DFREF saveDFR = GetDataFolderDFR()
 	SetDataFolder root:opto_df
 	string axes=axislist("")
@@ -1238,7 +1239,7 @@ function zoff_avg()
 		string axis_name=stringfromlist(i,axes)
 		if(CmpStr(axis_name,"L_AD6")!=0)
 			string wavematch=axis_name[2,4]
-			string average_name=wavematch+"_avg"
+			string average_name="PS_"+num2str(stimPoint)+"_AD"+num2str(HS)+"_"+wavematch+"_avg"
 			string error_name=wavematch+"_err"
 			string sweep_list_axis = waveList(("*"+wavematch+"*"), ";", "WIN:")
 			fWaveAverage(sweep_list_axis,"",1,1,average_name,error_name)
