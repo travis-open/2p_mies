@@ -12,45 +12,39 @@
 Function check_pockel(paneltitle, s) //this function can be associated with mapping sweep, to be cleaned up, appended
 	string paneltitle
 	STRUCT AnalysisFunction_V3 &s
-	wave sweep_track_wv=root:opto_df:sweep_tracking
+	wave mapInfo_wv=root:opto_df:mapInfo
 	switch(s.eventType)
 		case PRE_DAQ_EVENT:
 			//print "this pre-daq!"
-			
+			break
 		case PRE_SET_EVENT:
 			//print "I hope there's a Pockel cell pulse!"
 
 			break
 		case POST_SWEEP_EVENT:
 			
-			//InsertPoints/M=0 0, 1, sweep_track_wv
-			setdatafolder root:MIES:ITCDevices:ITC18USB:Device0:Data:
+			
+			//setdatafolder root:MIES:ITCDevices:ITC18USB:Device0:Data:
     		variable LastSweep = AFH_GetLastSweepAcquired("ITC18USB_Dev_0")
-    		string config_name="Config_Sweep_"+num2str(LastSweep)
-    		string sweep_name="Sweep_"+num2str(LastSweep)
-    		wave W_config=$config_name
-    		wave W_sweep=$sweep_name
-    		variable col_num=AFH_GetITCDataColumn(W_config, 6, 0) //data column corresponding to AD_6, where we record PC output
-    		Duplicate/o/r=[][col_num] W_sweep, tempAD6
-    		FindLevel/q tempAD6 0.05
-    		if (V_flag == 1)
-    			print "No Pockel cell output detected when one was expected on "+sweep_name
-    			variable time_crossing=NaN
-    		else
-    			time_crossing=V_LevelX
-    		endif
-    		string dim_name="sweep_"+num2str(LastSweep)
-			variable dimLabel=FindDimLabel(sweep_track_wv,0,dim_name)
-			if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
-				InsertPoints/M=0 0, 1, sweep_track_wv
-				SetDimLabel 0, 0, $dim_name, sweep_track_wv
-				sweep_track_wv[0][%sweep]=LastSweep
-				sweep_track_wv[0][%pockel_start]=time_crossing
-			else
-				sweep_track_wv[dimLabel][%sweep]=LastSweep
-				sweep_track_wv[dimLabel][%pockel_start]=time_crossing
-			endif
-
+    		//print lastsweep
+    		//string dim_name="sweep_"+num2str(LastSweep)
+			//variable dimLabel=FindDimLabel(mapInfo_wv,0,dim_name)
+			//if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
+				//InsertPoints/M=0 0, 1, mapInfo_wv
+				//SetDimLabel 0, 0, $dim_name, mapInfo_wv
+				//dimLabel=0
+			//endif	
+			//mapInfo_wv[dimLabel][0]=LastSweep
+			//variable stimPoint_ID=mapInfo_wv[dimLabel][1]
+			//variable stim_num=mapInfo_wv[dimLabel][2]
+			wave sP_ID_wv=root:opto_df:photoStim_ID
+			wave stim_num_wv=root:opto_df:stim_num
+			//sp_ID_wv[8]=stimPoint_ID
+			//stim_num_wv[8]=stim_num
+			ED_addentrytolabnotebook("ITC18USB_Dev_0", "stimPoint_ID", sP_ID_wv)
+			ED_addentrytolabnotebook("ITC18USB_Dev_0", "stim_num", stim_num_wv)
+			pockel_times_for_sweep(LastSweep)
+			check_baseline_for_sweep(LastSweep)
 			break
 		case POST_SET_EVENT:
 			
