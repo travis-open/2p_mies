@@ -39,6 +39,9 @@ Function run_mapping_sweep(stimPoint_ID, stim_num, x_offset, y_offset, z_offset)
 	wave mapInfo_wv=root:opto_df:mapInfo
 	wave sP_ID_wv=root:opto_df:photoStim_ID
 	wave stim_num_wv=root:opto_df:stim_num
+	wave x_off_wv=root:opto_df:x_off
+	wave y_off_wv=root:opto_df:y_off
+	wave z_off_wv=root:opto_df:z_off
 	wave round_count=root:opto_df:round_count
 	variable round_num=round_count[0]
 	variable LastSweep = AFH_GetLastSweepAcquired("ITC18USB_Dev_0")
@@ -67,6 +70,9 @@ Function run_mapping_sweep(stimPoint_ID, stim_num, x_offset, y_offset, z_offset)
 	mapInfo_wv[dimLabel][13]=z_offset
 	sp_ID_wv[8]=stimPoint_ID
 	stim_num_wv[8]=stim_num
+	x_off_wv[8]=x_offset
+	y_off_wv[8]=y_offset
+	z_off_wv[8]=z_offset
 	//pockel_times_for_sweep(LastSweep)
 	//check_baseline_for_sweep(lastsweep,-70)
 
@@ -700,6 +706,9 @@ Function make_opto_folder()
 		make_mapInfo_wave()
 		make/o/n=9 root:opto_df:photoStim_ID ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN} //make wave to store photoStim_ID and pass on to labnotebook
 		make/o/n=9 root:opto_df:stim_num ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
+		make/o/n=9 root:opto_df:x_off ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
+		make/o/n=9 root:opto_df:y_off ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
+		make/o/n=9 root:opto_df:z_off ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
 		make/o/n=4 root:opto_df:HS_selection={1,1,1,1,0,0,1} //make wave to store user-selected headstages to display
 		make/o/n=1 root:opto_df:round_count
 		wave round_count=root:opto_df:round_count

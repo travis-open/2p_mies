@@ -39,10 +39,16 @@ Function check_pockel(paneltitle, s) //this function can be associated with mapp
 			//variable stim_num=mapInfo_wv[dimLabel][2]
 			wave sP_ID_wv=root:opto_df:photoStim_ID
 			wave stim_num_wv=root:opto_df:stim_num
+			wave x_off_wv=root:opto_df:x_off
+			wave y_off_wv=root:opto_df:y_off
+			wave z_off_wv=root:opto_df:z_off
 			//sp_ID_wv[8]=stimPoint_ID
 			//stim_num_wv[8]=stim_num
 			ED_addentrytolabnotebook("ITC18USB_Dev_0", "stimPoint_ID", sP_ID_wv)
 			ED_addentrytolabnotebook("ITC18USB_Dev_0", "stim_num", stim_num_wv)
+			ED_addentrytolabnotebook("ITC18USB_Dev_0", "x_offset", x_off_wv)
+			ED_addentrytolabnotebook("ITC18USB_Dev_0", "y_offset", y_off_wv)
+			ED_addentrytolabnotebook("ITC18USB_Dev_0", "z_offset", z_off_wv)
 			pockel_times_for_sweep(LastSweep)
 			check_baseline_for_sweep(LastSweep)
 			break
