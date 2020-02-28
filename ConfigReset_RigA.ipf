@@ -49,7 +49,7 @@ Function Go()
 		MCC_SetNeutralizationCap(0)
 		MCC_SetSlowCurrentInjEnable(0)
 	
-		MCC_SetPrimarySignalGain(1) //gain to 1
+		MCC_SetPrimarySignalGain(5) //gain to 1
 	
 		MCC_SetMode(0) // set back to V clamp to start
 	endfor
