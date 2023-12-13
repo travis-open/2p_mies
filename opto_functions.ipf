@@ -5,13 +5,14 @@
 
 
 Function getNextSweep() //return next sweep to be associated with photostim
-	controlinfo/W=ITC18USB_Dev_0 setvar_sweep
+	controlinfo/W=Dev1 setvar_sweep
 	variable nextsweep=v_value
+	print (nextsweep)
 	return nextsweep
 end
 
 Function isDAQhappening() //return 0 if acquisition is not taking place
-	NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+	NVAR runmode = $GetDataAcqRunMode("Dev1")
 	return runmode
 end
 
@@ -19,7 +20,7 @@ end
 Function startDAQ()
 	variable runmode=isDAQhappening()
 	if (runmode==0)
-		PGC_SetAndActivateControl("ITC18USB_Dev_0","DataAcquireButton")
+		PGC_SetAndActivateControl("Dev1","DataAcquireButton")
 		return 1
 	else
 		print "DAQ already running, sweep not started"
@@ -44,7 +45,7 @@ Function run_mapping_sweep(stimPoint_ID, stim_num, x_offset, y_offset, z_offset)
 	wave z_off_wv=root:opto_df:z_off
 	wave round_count=root:opto_df:round_count
 	variable round_num=round_count[0]
-	variable LastSweep = AFH_GetLastSweepAcquired("ITC18USB_Dev_0")
+	variable LastSweep = AFH_GetLastSweepAcquired("Dev1")
 	
 	
 	controlinfo/W=ITC18USB_Dev_0 setvar_sweep
@@ -78,25 +79,44 @@ Function run_mapping_sweep(stimPoint_ID, stim_num, x_offset, y_offset, z_offset)
 
 end
 
+Function dmd_ephys_prep()
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=0) //no distribution
+	PGC_setandactivatecontrol("Dev1", "Check_Settings_InsertTP", val=0) //no test pulse
+	//set TTL channels
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=1) 
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=1)
+	string all_TTLs=ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL)
+	variable TTL_num = whichListItem("ttlRep10_TTL_0", all_TTLs)+1
+	PGC_setandactivatecontrol("Dev1", "Wave_TTL_00", val=TTL_num)
+	PGC_setandactivatecontrol("Dev1", "Wave_TTL_01", val=TTL_num)
+	//set DA channels
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
+	variable stim_set_num = whichListItem("hold10s_DA_0", all_dacs)+1
+	PGC_setandactivatecontrol("Dev1", "Wave_DA_00", val=stim_set_num) 
+	PGC_setandactivatecontrol("Dev1", "Wave_DA_01", val=stim_set_num) 
+
+end
+
 Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experiment
 	variable duration, stimPoints, reps
 	wave round_count=root:opto_df:round_count
 	round_count+=1	
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //no indexing
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=0) //no distribution
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_Settings_InsertTP", val=0) //no test pulse
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0) //turn off ttl outputs to LED's
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
-	string all_TTLs=ReturnListofAllStimSets(CHANNEL_TYPE_TTL,"*TTL*")
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=0) //no distribution
+	PGC_setandactivatecontrol("Dev1", "Check_Settings_InsertTP", val=0) //no test pulse
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=0) //turn off ttl outputs to LED's
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=0)
+	string all_TTLs=ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL)
 	if (duration<=0.2)
 		variable TTL_num=whichListItem("mappingVShort_TTL_0", all_TTLs)+1 // +1 due to 'none'
 	else
 		TTL_num=whichListItem("mappingShort_TTL_0", all_TTLs)+1
 	endif
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Wave_TTL_00", val=TTL_num) //select 'connmapping_ttl' as stim.
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=1)
+	PGC_setandactivatecontrol("Dev1", "Wave_TTL_00", val=TTL_num) //select 'connmapping_ttl' as stim.
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=1)
 	variable i
-	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
 	variable stim_set_num
 	if (duration<=0.2)
 		stim_set_num = whichListItem("mapping_200ms_DA_0", all_dacs)+1 //+1 to comp for 'none'
@@ -119,26 +139,26 @@ Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experi
 		variable DA_check = V_Value
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			PGC_setandactivatecontrol("Dev1", first_da_drop, val=stim_set_num)
 			count_headstages+=1
 		endif
 	endfor
 	
 	if (count_headstages==1) //set sampling rate to avoid filling memory
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 	endif
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=1)
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=1)
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_SetRepeats", val=1)
+	PGC_setAndActivateControl("Dev1", "Check_AD_06",val=1)
+	PGC_setAndActivateControl("Dev1", "check_DataAcq_AutoBias", val=1)
 	controlinfo/W=ITC18USB_Dev_0 setvar_sweep
 	variable nextsweep=v_value
 	print "mapping started at sweep "+num2str(nextsweep)+". "+num2str(stimPoints)+" stim IDs for "+num2str(reps)+". Over at sweep "+num2str(nextsweep+stimPoints*reps)+"."
 	write_map_settings(nextsweep, stimPoints, reps, 0)
-	make_photoStim_graph()
+	//make_photoStim_graph()
 end
 
 
@@ -229,13 +249,14 @@ Function ButtonProc_save(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up
-        	NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+        	NVAR runmode = $GetDataAcqRunMode("Dev1")
         	
         	if (runmode!=0)
         		print "Data is being acquired. I'm not doing anything for your own good."
         		break
         	else
-				saveit()
+        		print "saveit function here"
+				//saveit()
 				break
 			endif
 	case -1: // control being killed
@@ -250,7 +271,7 @@ Function ButtonProc_Intrinsic(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up
-        	NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+        	NVAR runmode = $GetDataAcqRunMode("Dev1")
         	
         	if (runmode!=0)
         		print "Data is being acquired. I'm not doing anything for your own good."
@@ -272,7 +293,7 @@ Function ButtonProc_bigsteps(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up
-        	NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+        	NVAR runmode = $GetDataAcqRunMode("Dev1")
         	
         	if (runmode!=0)
         		print "Data is being acquired. I'm not doing anything for your own good."
@@ -294,7 +315,7 @@ Function ButtonProc_multi(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up
-        	NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+        	NVAR runmode = $GetDataAcqRunMode("Dev1")
         	
         	if (runmode!=0)
         		print "Data is being acquired. I'm not doing anything for your own good."
@@ -315,7 +336,7 @@ Function ButtonProc_Mapping(ba) : ButtonControl
 
     switch( ba.eventCode )
     	case 2: // mouse up
-    	   NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+    	   NVAR runmode = $GetDataAcqRunMode("Dev1")
         	
         	if (runmode!=0)
         		print "Data is being acquired. I'm not doing anything for your own good."
@@ -343,7 +364,7 @@ Function ButtonProc_append(ba) : ButtonControl
 
     switch( ba.eventCode )
     	case 2: // mouse up
-    	   NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+    	   NVAR runmode = $GetDataAcqRunMode("Dev1")
         	
         	if (runmode!=0)
         		print "Data is being acquired. I'm not doing anything for your own good."
@@ -371,7 +392,7 @@ Function ButtonProc_1P(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up
-        NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+        NVAR runmode = $GetDataAcqRunMode("Dev1")
         	
         	if (runmode!=0)
         		print "Data is being acquired. I'm not doing anything for your own good."
@@ -399,7 +420,7 @@ Function ButtonProc_testP(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up
-        NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+        NVAR runmode = $GetDataAcqRunMode("Dev1")
         	
         	if (runmode!=0)
         		print "Data is being acquired. I'm not doing anything for your own good."
@@ -418,16 +439,16 @@ Function ButtonProc_testP(ba) : ButtonControl
 End	
 
 Function pairCheck()
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //indexing to run multiple stim
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=1) //distribute 
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Get_Set_ITI", val=0) //don;t use ITI's from protocols
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_ITI", val=10)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=0) //turn off the lights
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=10)
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //indexing to run multiple stim
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=1) //distribute 
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Get_Set_ITI", val=0) //don;t use ITI's from protocols
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_ITI", val=10)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=0) //turn off the lights
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=0)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=0)
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_SetRepeats", val=10)
 	variable i
-	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
 	variable stim_set_num = whichListItem("pulsetrain_50hz_DA_0", all_dacs)+1 //+1 to comp for 'none'
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
@@ -436,35 +457,35 @@ Function pairCheck()
 		variable DA_check = V_Value
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			PGC_setandactivatecontrol("Dev1", first_da_drop, val=stim_set_num)
 			count_headstages+=1
 		endif
 	endfor
 	
 	if (count_headstages==1) //set sampling rate to avoid filling memory
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
 	endif
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=0)
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
+	PGC_setAndActivateControl("Dev1", "Check_AD_06",val=0)
+	PGC_setAndActivateControl("Dev1", "check_DataAcq_AutoBias", val=1)
 
 end	
 
 Function bigsteps()
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //indexing to run multiple stim
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=1) //distribute in case there are synapses
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Get_Set_ITI", val=1) //use ITI's from protocols
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=0) //turn off the lights
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=1)
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //indexing to run multiple stim
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=1) //distribute in case there are synapses
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Get_Set_ITI", val=1) //use ITI's from protocols
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=0) //turn off the lights
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=0)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=0)
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_SetRepeats", val=1)
 	
 	variable i
-	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
 	variable stim_set_num = whichListItem("big_steps_DA_0", all_dacs)+1 //+1 to comp for 'none'
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
@@ -473,37 +494,37 @@ Function bigsteps()
 		variable DA_check = V_Value
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			PGC_setandactivatecontrol("Dev1", first_da_drop, val=stim_set_num)
 			count_headstages+=1
 		endif
 	endfor
 	
 	if (count_headstages==1) //set sampling rate to avoid filling memory
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
 	else
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
 	endif
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=0)
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
+	PGC_setAndActivateControl("Dev1", "Check_AD_06",val=0)
+	PGC_setAndActivateControl("Dev1", "check_DataAcq_AutoBias", val=1)
 	
 end
 
 
 
 Function intrinsic()
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //indexing to run multiple stim
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=1) //distribute in case there are synapses
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Get_Set_ITI", val=1) //use ITI's from protocols
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=0) //turn off the lights
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=1)
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //indexing to run multiple stim
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=1) //distribute in case there are synapses
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Get_Set_ITI", val=1) //use ITI's from protocols
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=0) //turn off the lights
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=0)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=0)
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_SetRepeats", val=1)
 	
-	string intrins_list = ReturnListofAllStimSets(CHANNEL_TYPE_DAC,"*intrins*") //find all intrinsic protocols and corresponding #'s in popups
-	string all_dacs = ReturnListofAllStimSets(0,"*DA*") 
+	string intrins_list = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC, searchString = "*intrins*") //find all intrinsic protocols and corresponding #'s in popups
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC, searchString = "*DA*") 
 	//string first_intrins = stringfromlist(0,intrins_list)
 	//string last_intrins = stringfromlist(itemsinlist(intrins_list, ";")-1, intrins_list)
 	//variable first_num=whichListItem(first_intrins,all_dacs)+1 //+1 to compensate for "none" in popup
@@ -518,21 +539,21 @@ Function intrinsic()
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
 			string last_da_drop = "IndexEnd_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
-			//PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=first_num) //originally ran 3 intrinsic protocols, but changed to just long steps, code left in for ease of going back
-			//PGC_setandactivatecontrol("ITC18USB_Dev_0", last_da_drop, val=last_num)
+			PGC_setandactivatecontrol("Dev1", first_da_drop, val=stim_set_num)
+			//PGC_setandactivatecontrol("Dev1", first_da_drop, val=first_num) //originally ran 3 intrinsic protocols, but changed to just long steps, code left in for ease of going back
+			//PGC_setandactivatecontrol("Dev1", last_da_drop, val=last_num)
 			count_headstages+=1
 		endif
 	endfor
 	if (count_headstages==1) //set sampling rate to avoid filling memory
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
 	endif
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=0)
+	PGC_setAndActivateControl("Dev1", "Check_AD_06",val=0)
 	make_stim_monitor()
 	Setvariable setvarInterval win=stim_monitor_ops, value= _NUM:1
 	Setvariable setvarReps win=stim_monitor_ops, value= _NUM:1
@@ -558,20 +579,20 @@ Function mapping([cells, reps, checkAppend])
 		sweep_ITI=2
 	endif
 	
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //no indexing
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=0) //no distribution
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Get_Set_ITI", val=0) 
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_ITI", val=sweep_ITI)  //ITI = see above
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_Settings_InsertTP", val=0) //no test pulse
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=sweeps)
-	string all_TTLs=ReturnListofAllStimSets(CHANNEL_TYPE_TTL,"*TTL*")
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=0) //no distribution
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Get_Set_ITI", val=0) 
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_ITI", val=sweep_ITI)  //ITI = see above
+	PGC_setandactivatecontrol("Dev1", "Check_Settings_InsertTP", val=0) //no test pulse
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_SetRepeats", val=sweeps)
+	string all_TTLs=ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL, searchString = "*TTL*")
 	variable TTL_num=whichListItem("ConnMapping_TTL_0", all_TTLs)+1 // +1 due to 'none'
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Wave_TTL_00", val=TTL_num) //select 'connmapping_ttl' as stim.
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=1)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0) //turn off other ttl outputs
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
+	PGC_setandactivatecontrol("Dev1", "Wave_TTL_00", val=TTL_num) //select 'connmapping_ttl' as stim.
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=1)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=0) //turn off other ttl outputs
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=0)
 	variable i
-	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
 	variable stim_set_num = whichListItem("ConnMapping_DA_0", all_dacs)+1 //+1 to comp for 'none'
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
@@ -580,21 +601,21 @@ Function mapping([cells, reps, checkAppend])
 		variable DA_check = V_Value
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			PGC_setandactivatecontrol("Dev1", first_da_drop, val=stim_set_num)
 			count_headstages+=1
 		endif
 	endfor
 	
 	if (count_headstages==1) //set sampling rate to avoid filling memory
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
 	endif
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=1)
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
+	PGC_setAndActivateControl("Dev1", "Check_AD_06",val=1)
+	PGC_setAndActivateControl("Dev1", "check_DataAcq_AutoBias", val=1)
 	make_stim_monitor()
 	Setvariable setvarInterval win=stim_monitor_ops, value= _NUM:cells
 	Setvariable setvarReps win=stim_monitor_ops, value= _NUM:reps
@@ -609,15 +630,15 @@ Function mapping([cells, reps, checkAppend])
 end
 
 Function TP_check()
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //no indexing
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_Settings_InsertTP", val=1) //test pulse on
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=0) //turn off the lights
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=1)
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
+	PGC_setandactivatecontrol("Dev1", "Check_Settings_InsertTP", val=1) //test pulse on
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=0) //turn off the lights
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=0)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=0)
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_SetRepeats", val=1)
 	
 	variable i
-	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
 	variable stim_set_num = whichListItem("TP_blank_DA_0", all_dacs)+1 //+1 to comp for 'none'
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
@@ -626,9 +647,9 @@ Function TP_check()
 		variable DA_check = V_Value
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
-			PGC_setAndActivateControl("ITC18USB_Dev_0", "SetVar_DataAcq_Hold_VC",val=-70)
-			PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DatAcq_HoldEnableVC",val=1)
+			PGC_setandactivatecontrol("Dev1", first_da_drop, val=stim_set_num)
+			PGC_setAndActivateControl("Dev1", "SetVar_DataAcq_Hold_VC",val=-70)
+			PGC_setAndActivateControl("Dev1", "check_DatAcq_HoldEnableVC",val=1)
 			
 			count_headstages+=1
 		endif
@@ -642,20 +663,20 @@ Function mapping_short(cells, reps, checkAppend)
 	variable sweeps = cells*reps
 	variable sweep_ITI=2
 	
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //no indexing
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=0) //no distribution
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Get_Set_ITI", val=0) 
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_ITI", val=sweep_ITI)  //ITI = see above
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_Settings_InsertTP", val=0) //no test pulse
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=sweeps)
-	string all_TTLs=ReturnListofAllStimSets(CHANNEL_TYPE_TTL,"*TTL*")
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=0) //no distribution
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Get_Set_ITI", val=0) 
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_ITI", val=sweep_ITI)  //ITI = see above
+	PGC_setandactivatecontrol("Dev1", "Check_Settings_InsertTP", val=0) //no test pulse
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_SetRepeats", val=sweeps)
+	string all_TTLs= ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL)
 	variable TTL_num=whichListItem("mappingShort_TTL_0", all_TTLs)+1 // +1 due to 'none'
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Wave_TTL_00", val=TTL_num) //select 'connmapping_ttl' as stim.
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=1)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0) //turn off other ttl outputs
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
+	PGC_setandactivatecontrol("Dev1", "Wave_TTL_00", val=TTL_num) //select 'connmapping_ttl' as stim.
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=1)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=0) //turn off other ttl outputs
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=0)
 	variable i
-	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
 	variable stim_set_num = whichListItem("mappingShort_DA_0", all_dacs)+1 //+1 to comp for 'none'
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
@@ -664,21 +685,21 @@ Function mapping_short(cells, reps, checkAppend)
 		variable DA_check = V_Value
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			PGC_setandactivatecontrol("Dev1", first_da_drop, val=stim_set_num)
 			count_headstages+=1
 		endif
 	endfor
 	
 	if (count_headstages==1) //set sampling rate to avoid filling memory
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //if all 4 active, don't downsample (already 25 Khz)
 	else
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+		PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
 	endif
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=1)
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "check_DataAcq_AutoBias", val=1)
+	PGC_setAndActivateControl("Dev1", "Check_AD_06",val=1)
+	PGC_setAndActivateControl("Dev1", "check_DataAcq_AutoBias", val=1)
 	make_stim_monitor()
 	Setvariable setvarInterval win=stim_monitor_ops, value= _NUM:cells
 	Setvariable setvarReps win=stim_monitor_ops, value= _NUM:reps
@@ -866,30 +887,30 @@ Function oneP(TTL1, TTL2)
 	if(TTL1==0 && TTL2==0)
 		print "no TTL active"
 	endif
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //no indexing
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq1_DistribDaq", val=0) //no distribution
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=0) //no distribution
 	variable i
-	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
-	string all_TTLs = ReturnListofAllStimSets(CHANNEL_TYPE_TTL,"*TTL*")
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
+	string all_TTLs = ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL)
 	variable stim_set_num = whichListItem("TargetCell_DA_0", all_dacs)+1 //+1 to comp for 'none'
 	variable TTL_num=whichListItem("TargetCell_TTL_0", all_TTLs)+1
 	//variable TTL_num=whichListItem("PWM_100ms_TTL_0", all_TTLs)+1
 	
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_SetRepeats", val=1)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "SetVar_DataAcq_ITI", val=10)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=0)
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_SetRepeats", val=1)
+	PGC_setandactivatecontrol("Dev1", "SetVar_DataAcq_ITI", val=10)
 	if(TTL1==1)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=1)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Wave_TTL_01", val=TTL_num)
+		PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=1)
+		PGC_setandactivatecontrol("Dev1", "Wave_TTL_01", val=TTL_num)
 	else
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_01", val=0)
+		PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=0)
 	endif
 	
 	if(TTL2==1)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=1)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Wave_TTL_02", val=TTL_num)
+		PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=1)
+		PGC_setandactivatecontrol("Dev1", "Wave_TTL_02", val=TTL_num)
 	else
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=0)
+		PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=0)
 	endif
 	variable count_headstages=0
 	for (i=0;i<=3;i+=1) //for each headstage
@@ -899,19 +920,19 @@ Function oneP(TTL1, TTL2)
 		
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=stim_set_num)
+			PGC_setandactivatecontrol("Dev1", first_da_drop, val=stim_set_num)
 			count_headstages+=1
 		endif
 	endfor	
 	if (count_headstages==1) //set sampling rate to avoid filling memory
-		//PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
+		//PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=2) //if only one headstage record at 25 kHz (interval = 4)
 	elseif(count_headstages==4)
-		//PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
+		//PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=0) //if all 4 active, don't downsample (already 25 Khz)
 	else
-		//PGC_setandactivatecontrol("ITC18USB_Dev_0", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
+		//PGC_setandactivatecontrol("Dev1", "Popup_Settings_SampIntMult", val=1) //sample multiplier = 2		
 		
 	endif
-	PGC_setAndActivateControl("ITC18USB_Dev_0", "Check_AD_06",val=0)
+	PGC_setAndActivateControl("Dev1", "Check_AD_06",val=0)
 	Print "Choose a TTL StimSet and then Ready to aquire!"
 
 
@@ -939,10 +960,10 @@ Function ButtonStop(ba) : ButtonControl
 
     switch( ba.eventCode )
         case 2: // mouse up
-          NVAR runmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+          NVAR runmode = $GetDataAcqRunMode("Dev1")
         	
         	if (runmode!=0)
-            	PGC_SetAndActivateControl("ITC18USB_Dev_0","DataAcquireButton")// click code here
+            	PGC_SetAndActivateControl("Dev1","DataAcquireButton")// click code here
           endif
           controlinfo/W=no_pockel setVarSweepReset
           variable missed_sweep=V_value
@@ -1837,20 +1858,20 @@ end
 
 Function oneP_full()
 	variable i
-	string all_dacs = ReturnListofAllStimSets(0,"*DA*")
-	string all_TTLs = ReturnListofAllStimSets(CHANNEL_TYPE_TTL,"*TTL*")
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
+	string all_TTLs = ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL)
 	variable stim_set_num = whichListItem("TargetCell_DA_0", all_dacs)+1 //+1 to comp for 'none'
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_00", val=0)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_TTL_02", val=1)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=0)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_02", val=1)
 	
-	string oneP_list = ReturnListofAllStimSets(CHANNEL_TYPE_TTL,"**") //find all oneP protocols and corresponding #'s in popups 
+	string oneP_list = ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL) //find all oneP protocols and corresponding #'s in popups 
 	string first_oneP = stringfromlist(0,oneP_list)
 	string last_oneP = stringfromlist(itemsinlist(oneP_list, ";")-1, oneP_list)
 	variable first_num=whichListItem(first_oneP,all_TTLs)+1 //+1 to compensate for "none" in popup
 	variable last_num=whichListItem(last_oneP,all_TTLs)+1
 	print "first_num="+num2str(first_num)
 	print "last_num="+num2str(last_num)
-	PGC_setandactivatecontrol("ITC18USB_Dev_0", "Check_DataAcq_Indexing", val=0) //no indexing
+	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
 	for (i=0;i<=3;i+=1) //for each headstage
 		string CB_name = "Check_DA_0"+num2str(i)
 		controlinfo/W=ITC18USB_Dev_0 $CB_name
@@ -1858,16 +1879,16 @@ Function oneP_full()
 		
 		if (DA_check == 1) //if it's in use, update the protocol
 			string first_da_drop = "Wave_DA_0"+num2str(i)
-			PGC_setandactivatecontrol("ITC18USB_Dev_0", first_da_drop, val=6)
+			PGC_setandactivatecontrol("Dev1", first_da_drop, val=6)
 			
 		endif
 	endfor	
 	for (i=first_num;i<=first_num;i+=1)
-		PGC_setandactivatecontrol("ITC18USB_Dev_0", "Wave_TTL_02", val=i)
+		PGC_setandactivatecontrol("Dev1", "Wave_TTL_02", val=i)
 		print i
-		PGC_SetAndActivateControl("ITC18USB_Dev_0","DataAcquireButton")
+		PGC_SetAndActivateControl("Dev1","DataAcquireButton")
 		Do
-			NVAR dataAcqRunmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+			NVAR dataAcqRunmode = $GetDataAcqRunMode("Dev1")
 		//print "run mode = " +num2str(dataAcqRunmode)
 		//start_run_check()
 		while(dataAcqRunmode==1)
@@ -1880,7 +1901,7 @@ end
 
 Function check_runmode(s)
 	STRUCT WMBackgroundStruct &s
-	NVAR dataAcqRunmode = $GetDataAcqRunMode("ITC18USB_Dev_0")
+	NVAR dataAcqRunmode = $GetDataAcqRunMode("Dev1")
 	print "run mode = " +num2str(dataAcqRunmode)
 	if (dataAcqRunmode==0)
 		stop_run_check()
@@ -2207,7 +2228,7 @@ Function check_qc_TS_post(sweep)
 		SetDimLabel 0, 0, $dim_name, mapInfo_wv
 		dimLabel=0
 	endif
-	check_baseline_for_sweep(sweep)
+	//check_baseline_for_sweep(sweep)
 end
 
 Function single_hs(headstage)
@@ -2276,103 +2297,5 @@ Function check_pockel_times()
 	print num2str(count)+" sweeps failed pockel QC"
 end
 
-Function pockel_times_for_sweep_v1(sweep)
-	variable sweep
-	wave mapInfo_wv=root:opto_df:mapInfo
-
-	setdatafolder root:MIES:ITCDevices:ITC18USB:Device0:Data:
-	string config_name="Config_Sweep_"+num2str(sweep)
-	string sweep_name="Sweep_"+num2str(sweep)
-	wave W_config=$config_name
-	wave W_sweep=$sweep_name
-	variable col_num=AFH_GetITCDataColumn(W_config, 6, 0) //data column corresponding to AD_6, where we record PC output
-	
-	if (numtype(col_num)==2)
-		print "no pockel"
-		
-		
-	else
-		Duplicate/o/r=[][col_num] W_sweep, tempAD6
-		FindLevel/q tempAD6 0.05
-		if (V_flag == 1)
-    		print "No Pockel cell output detected when one was expected on "+sweep_name
-    		variable time_crossing=NaN
-    		variable power=NaN
-    			
-    	else
-    		time_crossing=V_LevelX
-    		//wavestats/q/r=(time_crossing+1,time_crossing+2) tempAD6
-    		power=mean(tempAD6,time_crossing+1,time_crossing+2)
-    		power=round(power*52.7)
-		
-    	endif
-    	variable sweepEnd=rightx(tempAd6)
-    	variable dimLabel=FindDimLabel(mapInfo_wv,0,sweep_name)
-		if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
-			InsertPoints/M=0 0, 1, mapInfo_wv
-			mapinfo_wv[0][]=NaN
-			SetDimLabel 0, 0, $sweep_name, mapInfo_wv
-			dimLabel=0
-		endif	
-		mapInfo_wv[dimLabel][0]=sweep
-		mapInfo_wv[dimLabel][3]=time_crossing
-		mapInfo_wv[dimLabel][4]=power
-		mapInfo_wv[dimLabel][5]=sweepEnd
-	endif
-
-end
 
 
-Function pockel_times_for_sweep(sweep)
-	variable sweep
-	wave mapInfo_wv=root:opto_df:mapInfo
-	string sweep_name="Sweep_"+num2str(sweep)
-	variable dimLabel=FindDimLabel(mapInfo_wv,0,sweep_name)
-	if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
-		InsertPoints/M=0 0, 1, mapInfo_wv
-		mapinfo_wv[0][]=NaN
-		SetDimLabel 0, 0, $sweep_name, mapInfo_wv
-		dimLabel=0
-	endif
-	if(numtype(mapInfo_wv[dimLabel][3])==2) //if there's not pockel cell data, let's fill it out
-		setdatafolder root:MIES:ITCDevices:ITC18USB:Device0:Data:
-		string config_name="Config_Sweep_"+num2str(sweep)
-	
-		wave W_config=$config_name
-		wave W_sweep=$sweep_name
-		variable col_num=AFH_GetITCDataColumn(W_config, 6, 0) //data column corresponding to AD_6, where we record PC output
-	
-		if (numtype(col_num)==2)
-			print "no pockel recorded on AD6"
-		
-		else
-			Duplicate/o/r=[][col_num] W_sweep, tempAD6
-			FindLevel/q/p tempAD6 0.05
-			if (V_flag == 1)
-    			print "No Pockel cell output detected when one was expected on "+sweep_name
-    			variable time_crossing=NaN
-    			variable power=NaN
-    			
-    		else
-    			time_crossing=round(V_LevelX)*deltax(tempAD6)
-    			//wavestats/q/r=(time_crossing+1,time_crossing+2) tempAD6
-    			power=mean(tempAD6,time_crossing+1,time_crossing+2)
-    			power=round(power*52.7)
-		
-    		endif
-    		variable sweepEnd=rightx(tempAd6)
-			mapInfo_wv[dimLabel][0]=sweep
-			mapInfo_wv[dimLabel][3]=time_crossing
-			mapInfo_wv[dimLabel][4]=power
-			mapInfo_wv[dimLabel][5]=sweepEnd
-		endif
-	endif
-end
-
-function snr_up(last)
-	variable last
-	make_mapinfo_wave()
-	make_snr_df()
-	posthoc_qc(0,last)
-
-end
