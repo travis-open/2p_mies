@@ -2,12 +2,22 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #include <Waves Average>
 
+Function ServerSide()
+//from zmq demo experiment. Need to run for reliable zmq communication with python
+	zeromq_stop()
+	zeromq_server_bind("tcp://127.0.0.1:5555")
+	//zeromq_pub_bind("tcp://127.0.0.1:6666")
+	zeromq_handler_start()
+End
 
+
+	
+	
 
 Function getNextSweep() //return next sweep to be associated with photostim
 	controlinfo/W=Dev1 setvar_sweep
 	variable nextsweep=v_value
-	print (nextsweep)
+	//print (nextsweep)
 	return nextsweep
 end
 
@@ -28,58 +38,65 @@ Function startDAQ()
 	endif
 end
 
-Function run_mapping_sweep_short(stimpoint_id, stim_num)
-	variable stimPoint_ID, stim_num
-	startDAQ()
-end
-
-
-Function run_mapping_sweep(stimPoint_ID, stim_num, x_offset, y_offset, z_offset)
-	variable stimPoint_ID, stim_num, x_offset, y_offset, z_offset
-	
-	wave mapInfo_wv=root:opto_df:mapInfo
-	wave sP_ID_wv=root:opto_df:photoStim_ID
-	wave stim_num_wv=root:opto_df:stim_num
-	wave x_off_wv=root:opto_df:x_off
-	wave y_off_wv=root:opto_df:y_off
-	wave z_off_wv=root:opto_df:z_off
-	wave round_count=root:opto_df:round_count
-	variable round_num=round_count[0]
-	variable LastSweep = AFH_GetLastSweepAcquired("Dev1")
-	
-	
-	controlinfo/W=ITC18USB_Dev_0 setvar_sweep
-	
-	variable sweep_num=v_value
-	
-	startDAQ()
-	string dim_name="sweep_"+num2str(sweep_num)
-	variable dimLabel=FindDimLabel(mapInfo_wv,0,dim_name)
-	if(dimLabel==-2) //if there's not a row for this sweep yet - could be cleaned up when other variables are settled on
-		InsertPoints/M=0 0, 1, mapInfo_wv
-		mapinfo_wv[0][]=NaN
-		SetDimLabel 0, 0, $dim_name, mapInfo_wv
-		dimLabel=0
+Function make_received_data_folder()
+	DFREF saveDFR = GetDataFolderDFR()	
+	if(DataFolderExists("root:received_data:")==0)
+		newdatafolder root:received_data
+		
+		make/o/n=0/L root:received_data:dmd_sweeps
+		make/o/n=0/T root:received_data:dmd_stimset
+		make/o/n=0/T root:received_data:dmd_route
 	endif
-	
-	mapInfo_wv[dimLabel][0]=sweep_num
-	mapInfo_wv[dimLabel][1]=stimPoint_ID
-	mapInfo_wv[dimLabel][2]=stim_num
-	mapInfo_wv[dimLabel][6]=round_num
-	mapInfo_wv[dimLabel][11]=x_offset
-	mapInfo_wv[dimLabel][12]=y_offset
-	mapInfo_wv[dimLabel][13]=z_offset
-	sp_ID_wv[8]=stimPoint_ID
-	stim_num_wv[8]=stim_num
-	x_off_wv[8]=x_offset
-	y_off_wv[8]=y_offset
-	z_off_wv[8]=z_offset
-	//pockel_times_for_sweep(LastSweep)
-	//check_baseline_for_sweep(lastsweep,-70)
-
+	SetDataFolder saveDFR
 end
 
-Function dmd_ephys_prep()
+Function/S make_sweep_folder(sweep_num)
+	variable sweep_num
+	DFREF saveDFR = GetDataFolderDFR()
+	string df_name = "root:received_data:"+"X_"+num2str(sweep_num)
+	if(DataFolderExists(df_name)==0)
+		newdatafolder $df_name
+	endif
+	SetDataFolder saveDFR
+	return df_name
+end
+
+
+
+Function store_dmd_stimset_name(stimset_name, route_name, sweep_number)
+	string stimset_name, route_name
+	variable sweep_number
+	DFREF saveDFR = GetDataFolderDFR()
+	wave/T stimsets = root:received_data:dmd_stimset
+	wave/T routes = root:received_data:dmd_route
+	wave sweeps = root:received_data:dmd_sweeps
+	InsertPoints/M=0 0, 1, stimsets
+	InsertPoints/M=0/V=(sweep_number) 0, 1, sweeps
+	InsertPoints/M=0 0, 1, routes
+	stimsets[0] = stimset_name
+	routes[0] = route_name
+	
+
+	SetDataFolder saveDFR
+end
+
+Function store_photostim_order(string_input, sweep_num)
+	string string_input
+	variable sweep_num
+	DFREF saveDFR = GetDataFolderDFR()
+	string sweep_folder = make_sweep_folder(sweep_num)
+	SetDataFolder sweep_folder
+	Make/T/N=(ItemsInList(string_input, ";")) photostim_sequence
+	photostim_sequence = StringFromList(p, string_input, ";")
+	SetDataFolder saveDFR
+end
+
+
+Function dmd_ephys_prep(sweep_number, stimset_name, route, route_name)
+	variable sweep_number
+	string stimset_name, route, route_name
+	store_dmd_stimset_name(stimset_name, route_name, sweep_number)
+	store_photostim_order(route, sweep_number)
 	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
 	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=0) //no distribution
 	PGC_setandactivatecontrol("Dev1", "Check_Settings_InsertTP", val=0) //no test pulse
@@ -87,7 +104,7 @@ Function dmd_ephys_prep()
 	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=1) 
 	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=1)
 	string all_TTLs=ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL)
-	variable TTL_num = whichListItem("ttlRep10_TTL_0", all_TTLs)+1
+	variable TTL_num = whichListItem("ttlRep120_TTL_0", all_TTLs)+1
 	PGC_setandactivatecontrol("Dev1", "Wave_TTL_00", val=TTL_num)
 	PGC_setandactivatecontrol("Dev1", "Wave_TTL_01", val=TTL_num)
 	//set DA channels
@@ -715,28 +732,7 @@ end
 
 
 
-Function make_opto_folder()
-	if(DataFolderExists("root:opto_df:")==0)
-		newdatafolder root:opto_df
-	
-		make/o/n=0 root:opto_df:T_start
-		make/o/n=0 root:opto_df:roi
-		make/o/n=0 root:opto_df:reps
-		make/o/t/n=0 root:opto_df:cnxs
-		make/o/t/n=0 root:opto_df:supps
-		make_mapInfo_wave()
-		make/o/n=9 root:opto_df:photoStim_ID ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN} //make wave to store photoStim_ID and pass on to labnotebook
-		make/o/n=9 root:opto_df:stim_num ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
-		make/o/n=9 root:opto_df:x_off ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
-		make/o/n=9 root:opto_df:y_off ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
-		make/o/n=9 root:opto_df:z_off ={NaN, NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN}
-		make/o/n=4 root:opto_df:HS_selection={1,1,1,1,0,0,1} //make wave to store user-selected headstages to display
-		make/o/n=1 root:opto_df:round_count
-		wave round_count=root:opto_df:round_count
-		round_count=0
-		make_cnx_stats()
-	endif
-end
+
 
 Function make_mapInfo_wave()
 	DFREF saveDFR = GetDataFolderDFR()		// Save
