@@ -91,15 +91,19 @@ Function store_photostim_order(string_input, sweep_num)
 	SetDataFolder saveDFR
 end
 
-
-Function dmd_ephys_prep(sweep_number, stimset_name, route, route_name)
+Function generic_dmd_prep(sweep_number, stimset_name, route, route_name)
 	variable sweep_number
 	string stimset_name, route, route_name
 	store_dmd_stimset_name(stimset_name, route_name, sweep_number)
 	store_photostim_order(route, sweep_number)
 	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
 	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=0) //no distribution
-	PGC_setandactivatecontrol("Dev1", "Check_Settings_InsertTP", val=0) //no test pulse
+end
+
+Function dmd_sequence_ephys_prep(sweep_number, stimset_name, route, route_name)
+	variable sweep_number
+	string stimset_name, route, route_name
+	generic_dmd_prep(sweep_number, stimset_name, route, route_name)
 	//set TTL channels
 	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=1) 
 	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=1)
@@ -109,10 +113,26 @@ Function dmd_ephys_prep(sweep_number, stimset_name, route, route_name)
 	PGC_setandactivatecontrol("Dev1", "Wave_TTL_01", val=TTL_num)
 	//set DA channels
 	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
-	variable stim_set_num = whichListItem("hold10s_DA_0", all_dacs)+1
+	variable stim_set_num = whichListItem("hold1s_DA_0", all_dacs)+1
 	PGC_setandactivatecontrol("Dev1", "Wave_DA_00", val=stim_set_num) 
 	PGC_setandactivatecontrol("Dev1", "Wave_DA_01", val=stim_set_num) 
 
+end
+
+Function dmd_frame_ephys_prep(sweep_number, stimset_name, route, route_name)
+	variable sweep_number
+	string stimset_name, route, route_name
+	generic_dmd_prep(sweep_number, stimset_name, route, route_name)
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=0) //don't trigger changes in frame
+	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=1)
+	string all_TTLs=ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL)
+	variable TTL_num = whichListItem("sPulse1sPre_TTL_0", all_TTLs)+1
+	PGC_setandactivatecontrol("Dev1", "Wave_TTL_01", val=TTL_num)
+	//set DA channels
+	string all_dacs = ST_GetStimsetList(channelType = CHANNEL_TYPE_DAC)
+	variable stim_set_num = whichListItem("hold1s_DA_0", all_dacs)+1
+	PGC_setandactivatecontrol("Dev1", "Wave_DA_00", val=stim_set_num) 
+	PGC_setandactivatecontrol("Dev1", "Wave_DA_01", val=stim_set_num) 
 end
 
 Function mapping_prep(duration, stimPoints, reps) //get ready for mapping experiment
