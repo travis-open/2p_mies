@@ -86,24 +86,28 @@ Function store_photostim_order(string_input, sweep_num)
 	DFREF saveDFR = GetDataFolderDFR()
 	string sweep_folder = make_sweep_folder(sweep_num)
 	SetDataFolder sweep_folder
-	Make/T/N=(ItemsInList(string_input, ";")) photostim_sequence
+	Make/o/T/N=(ItemsInList(string_input, ";")) photostim_sequence
 	photostim_sequence = StringFromList(p, string_input, ";")
 	SetDataFolder saveDFR
 end
 
-Function generic_dmd_prep(sweep_number, stimset_name, route, route_name)
-	variable sweep_number
+Function generic_dmd_prep(sweep_number, stimset_name, route, route_name, sweep_reps)
+	variable sweep_number, sweep_reps
 	string stimset_name, route, route_name
-	store_dmd_stimset_name(stimset_name, route_name, sweep_number)
-	store_photostim_order(route, sweep_number)
+	variable sweep_i
+	for (sweep_i=sweep_number; sweep_i<sweep_number+sweep_reps; sweep_i+=1)
+		store_dmd_stimset_name(stimset_name, route_name, sweep_i)
+		store_photostim_order(route, sweep_i)
+	endfor
 	PGC_setandactivatecontrol("Dev1", "Check_DataAcq_Indexing", val=0) //no indexing
 	PGC_setandactivatecontrol("Dev1", "Check_DataAcq1_DistribDaq", val=0) //no distribution
+	PGC_setAndActivateControl("Dev1", "SetVar_DataAcq_SetRepeats", val=sweep_reps)
 end
 
-Function dmd_sequence_ephys_prep(sweep_number, stimset_name, route, route_name)
-	variable sweep_number
+Function dmd_sequence_ephys_prep(sweep_number, stimset_name, route, route_name, sweep_reps)
+	variable sweep_number, sweep_reps
 	string stimset_name, route, route_name
-	generic_dmd_prep(sweep_number, stimset_name, route, route_name)
+	generic_dmd_prep(sweep_number, stimset_name, route, route_name, sweep_reps)
 	//set TTL channels
 	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=1) 
 	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=1)
@@ -119,10 +123,10 @@ Function dmd_sequence_ephys_prep(sweep_number, stimset_name, route, route_name)
 
 end
 
-Function dmd_frame_ephys_prep(sweep_number, stimset_name, route, route_name)
-	variable sweep_number
+Function dmd_frame_ephys_prep(sweep_number, stimset_name, route, route_name, sweep_reps)
+	variable sweep_number, sweep_reps
 	string stimset_name, route, route_name
-	generic_dmd_prep(sweep_number, stimset_name, route, route_name)
+	generic_dmd_prep(sweep_number, stimset_name, route, route_name, sweep_reps)
 	PGC_setandactivatecontrol("Dev1", "Check_TTL_00", val=0) //don't trigger changes in frame
 	PGC_setandactivatecontrol("Dev1", "Check_TTL_01", val=1)
 	string all_TTLs=ST_GetStimsetList(channelType = CHANNEL_TYPE_TTL)
